@@ -96,7 +96,7 @@ func newMCPServer(cur func() *config, st *store) *mcp.Server {
 			warnings = append(warnings, fmt.Sprintf("calendar data is stale: last refresh %s ago", age.Round(time.Minute)))
 		}
 		if len(resp.Errors) > 0 {
-			warnings = append(warnings, fmt.Sprintf("%d feed(s) failed to refresh; their events may be missing", len(resp.Errors)))
+			warnings = append(warnings, fmt.Sprintf("%d feed(s) failed to refresh; their events may be missing or out of date, see errors", len(resp.Errors)))
 		}
 
 		out := mcpEvents{

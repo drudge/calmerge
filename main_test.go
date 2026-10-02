@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -742,5 +743,112 @@ func TestFetchFeedSizeCap(t *testing.T) {
 	_, err := fetchFeed(srv.Client(), Feed{Name: "Work", URL: srv.URL}, now, now.AddDate(0, 0, 7), time.UTC, now, true, true)
 	if err == nil || !strings.Contains(err.Error(), "larger than") {
 		t.Errorf("err = %v, want a size-cap error", err)
+	}
+}
+
+// TestBuildKeepsLastGoodFeed: a feed that fails after a good fetch keeps its
+// events (with the failure and their age in errors) instead of vanishing
+// until the next refresh, while a feed that never loaded is just reported.
+func TestBuildKeepsLastGoodFeed(t *testing.T) {
+	old := feedRetryDelay
+	feedRetryDelay = 0
+	defer func() { feedRetryDelay = old }()
+
+	day := time.Now().UTC().AddDate(0, 0, 1).Format("20060102")
+	ics := strings.Join([]string{
+		"BEGIN:VCALENDAR",
+		"BEGIN:VEVENT",
+		"UID:standup-1",
+		"DTSTAMP:20260601T000000Z",
+		"SUMMARY:Standup",
+		"DTSTART:" + day + "T140000Z",
+		"DTEND:" + day + "T143000Z",
+		"END:VEVENT",
+		"END:VCALENDAR",
+	}, "\r\n")
+	var down atomic.Bool
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if down.Load() {
+			http.Error(w, "busy", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(ics))
+	}))
+	defer srv.Close()
+	dead := httptest.NewServer(http.NotFoundHandler())
+	defer dead.Close()
+
+	cfg := config{loc: time.UTC, aheadDays: 7, feeds: []Feed{
+		{Name: "Work", URL: srv.URL},
+		{Name: "Family", URL: dead.URL},
+	}}
+	fc := &feedCache{}
+
+	first := build(cfg, srv.Client(), fc)
+	if first.Count != 1 || len(first.Errors) != 1 || first.Errors[0] != "Family: HTTP 404" {
+		t.Fatalf("first build: %d events, errors %q; want 1 event and only Family failing", first.Count, first.Errors)
+	}
+
+	down.Store(true)
+	hits.Store(0)
+	second := build(cfg, srv.Client(), fc)
+	if second.Count != 1 || second.Events[0].Name != "Standup" {
+		t.Fatalf("second build has %d events, want the Standup kept from the last good fetch", second.Count)
+	}
+	if hits.Load() != 2 {
+		t.Errorf("failed feed was fetched %d times, want 2 (one retry)", hits.Load())
+	}
+	var work string
+	for _, e := range second.Errors {
+		if strings.HasPrefix(e, "Work: ") {
+			work = e
+		}
+	}
+	if !strings.Contains(work, "HTTP 503") || !strings.Contains(work, "showing its events as of") {
+		t.Errorf("errors = %q, want Work's failure and the age of what's shown", second.Errors)
+	}
+
+	// With nothing remembered the feed simply drops out.
+	if got := build(cfg, srv.Client(), nil); got.Count != 0 || len(got.Errors) != 2 {
+		t.Errorf("no cache: %d events, errors %q; want 0 events and both feeds failing", got.Count, got.Errors)
+	}
+}
+
+// TestFeedCacheGet: remembered events are brought up to date before they
+// stand in: finished meetings turn past, days before the window go, and a
+// copy that's too old isn't used at all.
+func TestFeedCacheGet(t *testing.T) {
+	at := time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC)
+	f := Feed{Name: "Work", URL: "https://example.com/w.ics"}
+	fc := &feedCache{}
+	fc.put(f, []Event{
+		{Name: "Yesterday", Date: "2026-05-31", Start: "2026-05-31T09:00:00Z", End: "2026-05-31T10:00:00Z"},
+		{Name: "Morning", Date: "2026-06-01", Start: "2026-06-01T09:00:00Z", End: "2026-06-01T10:00:00Z"},
+		{Name: "Lunch", Date: "2026-06-01", Start: "2026-06-01T12:00:00Z", End: "2026-06-01T13:00:00Z"},
+		{Name: "Offsite", Date: "2026-06-01", Start: "2026-06-01T00:00:00Z", AllDay: true},
+	}, at)
+
+	now := at.Add(4*time.Hour + 30*time.Minute) // 12:30
+	evs, got, ok := fc.get(f, now, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	if !ok || !got.Equal(at) || len(evs) != 3 {
+		t.Fatalf("get = %d events, at %s, ok %v; want 3 from %s", len(evs), got, ok, at)
+	}
+	if !evs[0].Past || evs[0].Ongoing {
+		t.Errorf("Morning past=%v ongoing=%v, want past", evs[0].Past, evs[0].Ongoing)
+	}
+	if evs[1].Past || !evs[1].Ongoing {
+		t.Errorf("Lunch past=%v ongoing=%v, want ongoing", evs[1].Past, evs[1].Ongoing)
+	}
+	if evs[2].Past || evs[2].Ongoing {
+		t.Errorf("all-day Offsite past=%v ongoing=%v, want neither", evs[2].Past, evs[2].Ongoing)
+	}
+	if _, _, ok := fc.get(f, at.Add(maxStaleFeed+time.Minute), at); ok {
+		t.Error("a copy older than maxStaleFeed was still used")
+	}
+	fc.keep(nil)
+	if _, _, ok := fc.get(f, now, at); ok {
+		t.Error("a feed dropped from the config was still remembered")
 	}
 }

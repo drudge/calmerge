@@ -90,6 +90,10 @@ and `go run .`.
 - **Distroless has no shell.** A container terminal (Dokploy, Portainer)
   can't open; use `docker exec <container> /calmerge -print-config` on the
   host.
+- **A failed feed keeps its last good events.** `build` retries once, then
+  falls back to `feedCache` (in memory, up to a day old) and says so in
+  `errors`. Anything computed from "now" at fetch time has to be redone for
+  those reused events (see `setProgress`).
 - **Classifier state:** the model retrains from scratch every refresh (from
   firm labels in the window plus remembered lessons). Only firm labels
   (`manual`, `category`, `rule`) are ever trained on or remembered; never

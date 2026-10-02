@@ -1047,12 +1047,13 @@ func main() {
 			}
 			return
 		}
+		feedsSeen := &feedCache{}
 		refresh := func() {
 			c := cur.Load()
 			start := time.Now()
 			st.setRefreshing(true)
 			defer st.setRefreshing(false)
-			resp := build(*c, &http.Client{Timeout: c.httpTimeout})
+			resp := build(*c, &http.Client{Timeout: c.httpTimeout}, feedsSeen)
 			b, err := json.Marshal(resp)
 			if err != nil {
 				log.Printf("refresh marshal error: %v", err)
@@ -1149,7 +1150,106 @@ func groupDays(all []Event, now time.Time, loc *time.Location) []Day {
 	return days
 }
 
-func build(cfg config, cl *http.Client) Response {
+// A failed feed fetch is tried once more after feedRetryDelay, since most
+// failures are a blip on the calendar host. If that fails too, the feed's
+// last good events stand in for up to maxStaleFeed, so one bad fetch doesn't
+// empty a calendar until the next refresh.
+var feedRetryDelay = 2 * time.Second
+
+const maxStaleFeed = 24 * time.Hour
+
+// feedCache remembers each feed's last good events. A nil cache keeps
+// nothing: a failed feed then just drops out of the payload.
+type feedCache struct {
+	mu sync.Mutex
+	m  map[string]cachedFeed // by feed name + URL
+}
+
+type cachedFeed struct {
+	events []Event
+	at     time.Time
+}
+
+func feedKey(f Feed) string { return f.Name + "\x00" + f.URL }
+
+// put saves a feed's freshly fetched events.
+func (fc *feedCache) put(f Feed, evs []Event, at time.Time) {
+	if fc == nil {
+		return
+	}
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	if fc.m == nil {
+		fc.m = map[string]cachedFeed{}
+	}
+	fc.m[feedKey(f)] = cachedFeed{events: evs, at: at}
+}
+
+// get returns a feed's last good events, brought up to date for now: days
+// that have left the window (it starts at windowStart) are dropped and the
+// past/ongoing flags are worked out again. ok is false when there is nothing
+// saved or it is older than maxStaleFeed.
+func (fc *feedCache) get(f Feed, now, windowStart time.Time) (evs []Event, at time.Time, ok bool) {
+	if fc == nil {
+		return nil, time.Time{}, false
+	}
+	fc.mu.Lock()
+	c, found := fc.m[feedKey(f)]
+	fc.mu.Unlock()
+	if !found || now.Sub(c.at) > maxStaleFeed {
+		return nil, time.Time{}, false
+	}
+	first := windowStart.Format("2006-01-02")
+	evs = make([]Event, 0, len(c.events))
+	for _, ev := range c.events {
+		if ev.Date < first {
+			continue
+		}
+		setProgress(&ev, now)
+		evs = append(evs, ev)
+	}
+	return evs, c.at, true
+}
+
+// keep forgets feeds that are no longer configured.
+func (fc *feedCache) keep(feeds []Feed) {
+	if fc == nil {
+		return
+	}
+	want := make(map[string]bool, len(feeds))
+	for _, f := range feeds {
+		want[feedKey(f)] = true
+	}
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	for k := range fc.m {
+		if !want[k] {
+			delete(fc.m, k)
+		}
+	}
+}
+
+// setProgress sets a timed event's past/ongoing flags for now, from its start
+// and end. All-day entries carry neither flag.
+func setProgress(ev *Event, now time.Time) {
+	if ev.AllDay {
+		return
+	}
+	st, err := time.Parse(time.RFC3339, ev.Start)
+	if err != nil {
+		return
+	}
+	en, err := time.Parse(time.RFC3339, ev.End)
+	hasEnd := ev.End != "" && err == nil
+	ev.Ongoing = st.Before(now) && hasEnd && en.After(now)
+	if hasEnd {
+		ev.Past = !en.After(now) // ended at or before now
+	} else {
+		ev.Past = st.Before(now)
+	}
+}
+
+func build(cfg config, cl *http.Client, fc *feedCache) Response {
 	now := time.Now().In(cfg.loc)
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, cfg.loc).
 		AddDate(0, 0, -cfg.lookbackDays)
@@ -1168,20 +1268,29 @@ func build(cfg config, cl *http.Client) Response {
 			defer wg.Done()
 			evs, err := fetchFeed(cl, f, start, end, cfg.loc, now, cfg.includeAttendees, cfg.includeAgenda)
 			if err != nil {
-				results[i] = result{err: fmt.Sprintf("%s: %v", f.Name, err)}
+				time.Sleep(feedRetryDelay)
+				evs, err = fetchFeed(cl, f, start, end, cfg.loc, now, cfg.includeAttendees, cfg.includeAgenda)
+			}
+			if err == nil {
+				fc.put(f, evs, now)
+				results[i] = result{events: evs}
 				return
 			}
-			results[i] = result{events: evs}
+			if old, at, ok := fc.get(f, now, start); ok {
+				results[i] = result{events: old, err: fmt.Sprintf("%s: %v; showing its events as of %s", f.Name, err, at.Format("Jan 2 3:04pm"))}
+				return
+			}
+			results[i] = result{err: fmt.Sprintf("%s: %v", f.Name, err)}
 		}(i, f)
 	}
 	wg.Wait()
+	fc.keep(cfg.feeds)
 
 	var all []Event
 	var errs []string
 	for _, r := range results {
 		if r.err != "" {
 			errs = append(errs, r.err)
-			continue
 		}
 		all = append(all, r.events...)
 	}
@@ -1350,14 +1459,11 @@ func fetchFeed(cl *http.Client, f Feed, start, end time.Time, loc *time.Location
 		ev := base
 		ev.Start = st.Format(time.RFC3339)
 		ev.Date = st.Format("2006-01-02")
-		ev.Ongoing = st.Before(now) && hasEnd && en.After(now)
 		if hasEnd {
-			ev.Past = !en.After(now) // ended at or before now
 			ev.Duration = humanizeDuration(en.Sub(st))
 			ev.End = en.Format(time.RFC3339)
-		} else {
-			ev.Past = st.Before(now)
 		}
+		setProgress(&ev, now)
 		out = append(out, ev)
 	}
 	return out, nil

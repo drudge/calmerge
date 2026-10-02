@@ -23,7 +23,10 @@ feeds into a single list with a per-calendar tag.**
 - Refreshes feeds on a background timer (default every 15m) and always serves
   the last-known payload instantly, so requests never block on the upstream
   fetch (this is what keeps Glance from timing out while "awaiting headers").
-- If one feed fails, the others still render; failures show up in `errors`.
+- If one feed fails, the others still render and the failure shows up in
+  `errors`. A failed fetch is retried once; if that fails too, the feed's last
+  good events stay in the payload (for up to a day) and `errors` says how old
+  they are, so a blip on one calendar host never empties that calendar.
 
 ## Endpoints
 
@@ -427,7 +430,8 @@ false/empty. `warnings` flags incomplete coverage the caller should surface:
 
 - cache still warming (first refresh not done yet)
 - stale data (last refresh older than 2x `CACHE_TTL_MIN`)
-- one or more feeds failed to refresh (details in `errors`)
+- one or more feeds failed to refresh, so their events may be missing or out
+  of date (details in `errors`)
 - requested days run past the server's `LOOKAHEAD_DAYS`
 
 **Claude custom connector.** In Claude, go to Settings → Connectors → Add
