@@ -1,0 +1,214 @@
+/* Source for ui/static/app.css. Rebuild with `go generate ./...` after
+   changing templates or this file, and commit the result. */
+@import "tailwindcss";
+@source "./templates";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-ink: #121418;
+  --color-bar: #16191e;
+  --color-card: #1a1d23;
+  --color-raise: #22262e;
+  --color-sel: #232833;
+  --color-guessbg: #1e2026;
+  --color-gapbg: #15171c;
+  --color-line: #2c313a;
+  --color-line2: #353b45;
+  --color-line3: #262a33;
+  --color-fg: #eceae4;
+  --color-fg2: #d6d3cc;
+  --color-mute: #b0b6c0;
+  --color-dim: #8f96a1;
+  --color-amber: #e8a95b;
+  --color-amber-hi: #f3c68d;
+  --color-amber-ink: #1d1406;
+  --color-join: #243452;
+  --color-join-fg: #dbe7ff;
+  --color-ok: #7fdc8f;
+  --color-ok-bg: #2f3b2f;
+  --color-live: #57c46a;
+  --color-bad: #f08a7e;
+}
+
+@layer base {
+  html { color-scheme: dark; }
+  body { -webkit-font-smoothing: antialiased; }
+  :focus-visible { outline: 2px solid var(--color-amber); outline-offset: 2px; }
+  a { color: inherit; }
+  select { appearance: none; -webkit-appearance: none; }
+}
+
+@layer components {
+  /* Rows and panels rise into place, staggered by inline animation-delay. */
+  .cm-rise { animation: cm-rise .34s cubic-bezier(.2, .8, .2, 1) both; }
+  .cm-flash { animation: cm-flash 1.4s cubic-bezier(.2, .7, .3, 1) both; }
+  .cm-settle { animation: cm-settle .5s cubic-bezier(.3, 1.5, .5, 1) both; }
+  .cm-pop { animation: cm-pop .42s cubic-bezier(.3, 1.5, .5, 1) both; }
+  .cm-spin { animation: cm-spin .7s linear infinite; }
+
+  /* Skeleton shimmer; each bone's inline delay makes the light sweep down. */
+  .cm-sk {
+    background: linear-gradient(90deg, #1f232a 0%, #2b3039 38%, #1f232a 76%);
+    background-size: 1400px 100%;
+    animation: cm-shimmer 1.3s cubic-bezier(.4, 0, .2, 1) infinite;
+    border-radius: 6px;
+  }
+
+  /* The merge loader: three calendars orbit and fuse into one. */
+  .cm-merge { position: relative; width: 22px; height: 22px; display: block; flex-shrink: 0; }
+  .cm-merge > i {
+    position: absolute; left: 8px; top: 8px; width: 6px; height: 6px; border-radius: 3px;
+    animation: cm-merge 1.5s cubic-bezier(.6, 0, .4, 1) infinite;
+  }
+  .cm-merge > i:nth-child(1) { background: #dc4747; }
+  .cm-merge > i:nth-child(2) { background: #fe952e; animation-delay: -.5s; }
+  .cm-merge > i:nth-child(3) { background: #4699ff; animation-delay: -1s; }
+
+  .cm-live { animation: cm-breathe 1.8s ease-out 2; }
+
+  /* Buttons swap their label for a spinner while their request is in flight. */
+  .cm-btn .cm-btn-busy { display: none; }
+  .cm-btn.htmx-request .cm-btn-idle { display: none; }
+  .cm-btn.htmx-request .cm-btn-busy { display: inline-flex; }
+
+  /* Only a slow load shows the skeleton: it fades in after 120ms, so a fast
+     one (the normal case) never flashes it. */
+  .cm-skel { opacity: 0; visibility: hidden; pointer-events: none; }
+  /* htmx keeps .htmx-request on through the view transition that plays the
+     swap, so without the :active-view-transition guard a 1ms response still
+     flashed the skeleton for the whole slide. */
+  html:not(:active-view-transition) #view.htmx-request .cm-skel { opacity: 1; visibility: visible; transition: opacity .18s ease .12s, visibility 0s .12s; }
+  html:not(:active-view-transition) #view.htmx-request #view-content { opacity: 0; transition: opacity .12s ease .12s; }
+
+  /* Toast: the amber line drains around the border; when it's gone the toast
+     pops away. Hover pauses it. */
+  .cm-toast { animation: cm-toast .4s cubic-bezier(.2, .9, .3, 1.25) both; }
+  .cm-toast-out { animation: cm-toast-out .36s cubic-bezier(.5, 0, .75, 0) both; }
+  .cm-trace { stroke-dasharray: 100 100; animation: cm-trace 5s linear both; }
+  .cm-toastbox:hover .cm-trace { animation-play-state: paused; }
+
+  .cm-clamp { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+  .cm-hours { background-image: repeating-linear-gradient(to bottom, #262a33 0, #262a33 1px, transparent 1px, transparent 88px); }
+  .cm-now::before { content: ""; position: absolute; left: -5px; top: -4px; width: 9px; height: 9px; border-radius: 5px; background: var(--color-amber); animation: cm-breathe-amber 2.4s ease-out infinite; }
+
+  /* Folded "today": pill and card share one name, so the pill grows into
+     the card; the days below slide instead of jumping. */
+  .cm-earlier-box {
+    border-radius: 32px; overflow: hidden;
+    transition: border-radius .5s cubic-bezier(.3, 1.1, .4, 1), border-color .3s ease;
+  }
+  .cm-earlier-box:hover { border-color: var(--color-line2); }
+  .cm-earlier[data-open] .cm-earlier-box { border-radius: 12px; }
+  .cm-earlier-head { height: 64px; transition: height .45s cubic-bezier(.3, 1.1, .4, 1); }
+  .cm-earlier[data-open] .cm-earlier-head { height: 44px; }
+  .cm-earlier-chev { transition: transform .45s cubic-bezier(.3, 1.4, .4, 1); }
+  .cm-earlier[data-open] .cm-earlier-chev { transform: rotate(90deg); }
+  .cm-earlier-sum, .cm-earlier-lbl { transition: opacity .25s ease, transform .4s cubic-bezier(.2, .8, .2, 1); }
+  .cm-earlier-lbl { opacity: 0; transform: translateY(8px); pointer-events: none; }
+  .cm-earlier[data-open] .cm-earlier-sum { opacity: 0; transform: translateY(-8px); pointer-events: none; }
+  .cm-earlier[data-open] .cm-earlier-lbl { opacity: 1; transform: none; transition-delay: .08s; }
+  .cm-earlier-rows { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .5s cubic-bezier(.3, 1, .4, 1); }
+  .cm-earlier[data-open] .cm-earlier-rows { grid-template-rows: 1fr; }
+  .cm-erow { opacity: 0; transform: translateY(10px); transition: opacity .3s ease, transform .4s cubic-bezier(.2, .8, .2, 1); }
+  .cm-earlier[data-open] .cm-erow { opacity: 1; transform: none; transition-delay: calc(var(--i) * 45ms + 140ms); }
+
+  /* Phone details sheet: slides up, slides away. */
+  @media (max-width: 1023px) {
+    /* backwards, not both: a finished animation must not pin transform, or
+       dragging the sheet (inline transform) would do nothing. */
+    .cm-sheet, .cm-menu { animation: cm-sheet-in .46s cubic-bezier(.2, .9, .25, 1.04) backwards; }
+    .cm-menu-backdrop { animation: cm-fade-in .3s ease backwards; }
+    .cm-sheet-out { animation: cm-sheet-out .3s cubic-bezier(.5, 0, .75, 0) both; }
+    .cm-backdrop { animation: cm-fade-in .3s ease both; }
+    .cm-backdrop-out { animation: cm-fade-out .3s ease both; }
+  }
+
+  /* Desktop: the panel morphs between meetings as one piece (morphing its
+     parts separately left ghosted half-words mid-crossfade). */
+  @media (min-width: 1024px) {
+    .cm-panel { view-transition-name: cm-panel; }
+    .cm-selbar { view-transition-name: cm-selbar; }
+  }
+  .cm-switch-on { view-transition-name: cm-switch; }
+  html[data-dir="prev"] .cm-list, html[data-dir="next"] .cm-list, html[data-dir="fade"] .cm-list { view-transition-name: cm-list; }
+
+  /* Time off: a calm teal hatch, clearly not a meeting. */
+  .cm-ooo { background: repeating-linear-gradient(135deg, #18272a 0 9px, #152225 9px 18px); }
+  .cm-ooo-col { background: repeating-linear-gradient(135deg, #172326 0 9px, #141d20 9px 18px); }
+
+  .cm-snapping { transition: transform .46s cubic-bezier(.22, 1, .36, 1) !important; }
+  @media (max-width: 1023px) { [data-sheet] { will-change: transform; } }
+  .cm-fadein { animation: cm-fadein .32s cubic-bezier(.2, .8, .2, 1) both; }
+  @media (min-width: 1024px) { .cm-menu-backdrop { display: none; } }
+
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details[open] .cm-chev { transform: rotate(90deg); }
+}
+
+@keyframes cm-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes cm-flash { 0% { background-color: #3b3020; } 100% { background-color: transparent; } }
+@keyframes cm-settle { 0% { transform: scale(.9); opacity: .4; } 45% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes cm-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes cm-spin { to { transform: rotate(360deg); } }
+@keyframes cm-shimmer { from { background-position: -700px 0; } to { background-position: 700px 0; } }
+@keyframes cm-merge {
+  0% { transform: rotate(0deg) translateX(8px) scale(1); }
+  45%, 55% { transform: rotate(180deg) translateX(0) scale(1.35); }
+  100% { transform: rotate(360deg) translateX(8px) scale(1); }
+}
+@keyframes cm-breathe { 0% { box-shadow: 0 0 0 0 rgba(87, 196, 106, .55); } 100% { box-shadow: 0 0 0 7px rgba(87, 196, 106, 0); } }
+@keyframes cm-breathe-amber { 0% { box-shadow: 0 0 0 0 rgba(232, 169, 91, .5); } 70%, 100% { box-shadow: 0 0 0 6px rgba(232, 169, 91, 0); } }
+@keyframes cm-toast { from { transform: translateY(28px) scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cm-toast-out { 0% { transform: scale(1); opacity: 1; } 35% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(.82); opacity: 0; filter: blur(3px); } }
+@keyframes cm-trace { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
+
+@keyframes cm-fadein { from { opacity: 0; transform: translateY(5px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes cm-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes cm-sheet-out { from { transform: none; } to { transform: translateY(105%); } }
+@keyframes cm-fade-in { from { opacity: 0; } }
+@keyframes cm-fade-out { to { opacity: 0; } }
+@keyframes cm-out-left { to { transform: translateX(-48px); opacity: 0; } }
+@keyframes cm-out-right { to { transform: translateX(48px); opacity: 0; } }
+@keyframes cm-in-right { from { transform: translateX(48px); opacity: 0; } }
+@keyframes cm-in-left { from { transform: translateX(-48px); opacity: 0; } }
+
+/* View transitions: a springy default for every morph, stretch-free
+   snapshots for the growing "today" card, and page slides for the pager. */
+::view-transition-group(*) { animation-duration: .38s; animation-timing-function: cubic-bezier(.2, .85, .25, 1); }
+/* The panel morph is clipped to the card's rounded shape and painted with
+   its background, so no square corner or empty gap shows mid-resize; the old
+   content fades out fast and the new fades in just behind it. */
+::view-transition-group(cm-panel) { border-radius: 12px; overflow: clip; background: #1a1d23; box-shadow: 0 0 0 1px #2c313a; animation-duration: .42s; }
+::view-transition-old(cm-panel), ::view-transition-new(cm-panel) { height: 100%; object-fit: none; object-position: top; }
+::view-transition-old(cm-panel) { animation: cm-fade-out .14s ease both; }
+::view-transition-new(cm-panel) { animation: cm-fade-in .26s ease .07s both; }
+::view-transition-group(cm-selbar) { animation-timing-function: cubic-bezier(.3, 1.3, .4, 1); }
+html[data-dir="next"]::view-transition-old(cm-list) { animation: cm-out-left .22s cubic-bezier(.4, 0, 1, 1) both; }
+html[data-dir="next"]::view-transition-new(cm-list) { animation: cm-in-right .34s cubic-bezier(0, 0, .2, 1) .05s both; }
+html[data-dir="prev"]::view-transition-old(cm-list) { animation: cm-out-right .22s cubic-bezier(.4, 0, 1, 1) both; }
+html[data-dir="prev"]::view-transition-new(cm-list) { animation: cm-in-left .34s cubic-bezier(0, 0, .2, 1) .05s both; }
+
+/* Week <-> Agenda: every timed meeting glides from its agenda row to its block
+   in the week grid (both carry the same --vt) while the rest crossfades. Named
+   only during a switch, or rows would split off from the pager's list slide;
+   rows folded into "earlier" stay out, or they'd fly in from nowhere. The
+   entrance cascade is skipped (0s, not none, so it can't replay later) since
+   a row that rises from opacity 0 would be captured invisible. */
+html[data-dir="switch"] [style*="--vt"] { view-transition-name: var(--vt); view-transition-class: cm-ev; }
+html[data-dir="switch"] #earlier:not([data-open]) [style*="--vt"] { view-transition-name: none; }
+html[data-dir="switch"] .cm-rise { animation-duration: 0s !important; animation-delay: 0s !important; }
+::view-transition-group(*.cm-ev) { animation-duration: .52s; animation-timing-function: cubic-bezier(.2, .9, .25, 1); border-radius: 6px; overflow: clip; }
+::view-transition-old(*.cm-ev), ::view-transition-new(*.cm-ev) { height: 100%; object-fit: none; object-position: left top; }
+::view-transition-old(*.cm-ev) { animation: cm-fade-out .2s ease both; }
+::view-transition-new(*.cm-ev) { animation: cm-fade-in .3s ease .1s both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-earlier-box, .cm-earlier-head, .cm-earlier-chev, .cm-earlier-sum, .cm-earlier-lbl, .cm-earlier-rows, .cm-erow { transition: none !important; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+  .cm-sheet, .cm-sheet-out, .cm-backdrop, .cm-backdrop-out { animation-duration: 1ms; }
+  .cm-sk, .cm-spin, .cm-merge > i, .cm-live, .cm-now::before { animation: none; }
+  .cm-rise, .cm-pop, .cm-settle, .cm-toast, .cm-flash, .cm-toast-out { animation-duration: 1ms; }
+}

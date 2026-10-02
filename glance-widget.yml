@@ -1,0 +1,48 @@
+# ── Unified calendar widget ────────────────────────────────────────────────
+# Paste into a column in your glance.yml (under `widgets:`). Set `url` to your
+# calmerge service's hostname on the Docker network it shares with Glance.
+# Mirrors Glance's hacker-news markup (size-title-dynamic, list-horizontal-text,
+# visited-indicator) and adds a leading type glyph per link: video=conference,
+# link=URL, pin=physical location. Glyphs are inline SVG using currentColor so
+# they sit at the muted metadata color; the visited-indicator arrow stays accent.
+# Reaches calmerge over the internal Docker network, so no auth header is needed —
+# the bearer token (AUTH_TOKEN) is only enforced on Cloudflare-tunnel traffic.
+- type: custom-api
+  title: Schedule
+  cache: 15m
+  url: http://calmerge:8076/events
+  template: |
+    {{ $days := .JSON.Array "days" }}
+    {{ if eq (len $days) 0 }}
+      <p style="opacity:.55;">No upcoming events</p>
+    {{ else }}
+    <div class="collapsible-container" data-collapse-after="4">
+      {{ range $di, $day := $days }}
+        <div {{ if ge $di 4 }}class="collapsible-item"{{ end }} style="margin-bottom:1.2rem;">
+          <div class="size-h6" style="opacity:.55; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.5rem;">{{ $day.String "label" }}</div>
+          <ul class="list list-gap-14">
+            {{ range $e := $day.Array "events" }}
+              {{ $c := $e.String "color" }}
+              <li class="flex gap-10"{{ if $e.Bool "past" }} style="opacity:.4;"{{ end }}>
+                <div class="size-h6 shrink-0" style="width:52px; padding-top:.1rem; opacity:.7;">
+                  <div>{{ if $e.Bool "allDay" }}all-day{{ else }}{{ $e.String "start" | parseTime "rfc3339" | formatTime "3:04pm" }}{{ end }}</div>
+                  {{ $dur := $e.String "duration" }}
+                  {{ if $dur }}<div style="opacity:.75;">{{ $dur }}</div>{{ end }}
+                </div>
+                <div class="grow min-width-0">
+                  <div class="size-title-dynamic color-highlight">{{ $e.String "name" }}</div>
+                  <ul class="list-horizontal-text flex-nowrap text-compact">
+                    <li class="shrink-0"><span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:{{ $c }}; margin-right:5px; vertical-align:middle;"></span>{{ $e.String "source" }}</li>
+                    {{ $m := $e.String "meetUrl" }}
+                    {{ if $m }}<li class="shrink-0"><a class="visited-indicator" href="{{ $m }}" target="_blank" rel="noreferrer"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-.15em; margin-right:4px;"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>{{ $e.String "meetKind" }}</a></li>{{ end }}
+                    {{ $loc := $e.String "location" }}
+                    {{ if $loc }}{{ $lk := $e.String "locKind" }}<li class="shrink-0"><a class="visited-indicator" href="{{ $e.String "mapUrl" }}" target="_blank" rel="noreferrer" title="{{ $e.String "address" }}">{{ if eq $lk "map" }}<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-.15em; margin-right:4px;"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{{ else }}<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-.15em; margin-right:4px;"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/></svg>{{ end }}{{ $loc }}</a></li>{{ end }}
+                  </ul>
+                </div>
+              </li>
+            {{ end }}
+          </ul>
+        </div>
+      {{ end }}
+    </div>
+    {{ end }}

@@ -1,0 +1,432 @@
+{{/* Everything below swaps as one unit (#view-content) on navigation and
+     corrections; ids on rows and blocks let the morph keep what didn't change,
+     so only new or changed things animate. */}}
+
+{{define "nav"}}hx-target="#view-content" hx-swap="outerMorph transition:true" hx-push-url="true" hx-indicator="#view" hx-on:click="cm.dir('fade')"{{end}}
+{{define "nav-prev"}}hx-target="#view-content" hx-swap="outerMorph transition:true" hx-push-url="true" hx-indicator="#view" hx-on:click="cm.dir('prev')"{{end}}
+{{define "nav-next"}}hx-target="#view-content" hx-swap="outerMorph transition:true" hx-push-url="true" hx-indicator="#view" hx-on:click="cm.dir('next')"{{end}}
+{{define "nav-switch"}}hx-target="#view-content" hx-swap="outerMorph transition:true" hx-push-url="true" hx-indicator="#view" hx-on:click="cm.dir('switch')"{{end}}
+{{define "select"}}hx-target="#view-content" hx-swap="outerMorph transition:true" hx-push-url="true" hx-on:click="cm.dir('select')"{{end}}
+
+{{define "icon-video"}}<svg aria-hidden="true" width="{{.}}" height="{{.}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3"/></svg>{{end}}
+{{define "icon-ext"}}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>{{end}}
+{{define "icon-doc"}}<svg aria-hidden="true" width="{{.}}" height="{{.}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>{{end}}
+{{define "icon-pin"}}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>{{end}}
+{{define "icon-check"}}<svg aria-hidden="true" width="{{.}}" height="{{.}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>{{end}}
+{{define "icon-arc"}}<svg class="cm-spin" aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 3a9 9 0 1 1-9 9"/></svg>{{end}}
+{{define "chev"}}<svg class="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b0b6c0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>{{end}}
+{{/* The pattern lives once in the layout (defs): a reference into a
+     collapsed <details> would draw nothing. */}}
+{{define "zig"}}<svg aria-hidden="true" class="h-2 min-w-0 flex-1"><rect width="100%" height="8" fill="url(#cm-zz)"/></svg>{{end}}
+
+{{define "view"}}
+<div id="view-content" class="flex flex-col gap-5">
+{{template "toolbar" .}}
+{{if .Warming}}
+{{template "skeleton"}}
+{{else}}
+<div class="flex flex-col gap-6 lg:flex-row lg:items-start">
+<section class="cm-list min-w-0 flex-1" aria-label="{{if .IsWeek}}Week{{else}}Agenda{{end}}">
+{{if .IsWeek}}{{template "week" .Week}}{{else}}{{template "agenda" .}}{{end}}
+</section>
+{{/* Sticks exactly where it starts (header 64 + padding 20 + toolbar 42 +
+     gap 20 = 146px), so it never slides and its bottom (the save bar) is on
+     screen from the first paint. */}}
+<aside id="panel" class="lg:sticky lg:top-[146px] lg:max-h-[calc(100dvh-170px)] lg:w-[380px] lg:shrink-0 lg:overflow-y-auto lg:overscroll-contain lg:rounded-xl lg:[scrollbar-color:#353b45_transparent] lg:[scrollbar-width:thin]" aria-label="Details">
+{{if .Panel}}{{template "panel" .Panel}}{{else}}{{template "panel-empty" .}}{{end}}
+</aside>
+</div>
+{{end}}
+</div>
+{{end}}
+
+{{define "client-menu"}}
+<span data-backdrop class="cm-menu-backdrop fixed inset-0 z-40 bg-black/55 lg:hidden" hx-on:click="this.closest('details').removeAttribute('open')" aria-hidden="true"></span>
+<div data-sheet class="cm-menu absolute top-10 left-0 z-20 lg:right-0 lg:left-auto flex w-72 flex-col rounded-xl border border-line2 bg-raise p-1.5 shadow-[0_18px_40px_rgba(0,0,0,.45)] max-lg:fixed max-lg:inset-x-0 max-lg:top-auto max-lg:bottom-0 max-lg:z-50 max-lg:max-h-[70dvh] max-lg:w-auto max-lg:overflow-y-auto max-lg:overscroll-contain max-lg:rounded-t-2xl max-lg:rounded-b-none max-lg:px-3 max-lg:pt-0 max-lg:pb-5">
+{{template "grab"}}
+<p class="m-0 px-3 pt-1 pb-2 text-xs tracking-[0.06em] text-dim uppercase lg:hidden">Filter by client</p>
+<a href="{{.ClientClearURL}}" hx-get="{{.ClientClearURL}}" {{template "nav"}} class="flex h-9 items-center gap-2.5 rounded-lg px-3 text-[13px] no-underline transition hover:bg-line max-lg:h-11 max-lg:text-sm {{if not .Client}}text-fg{{else}}text-fg2{{end}}"><span class="size-2 rounded-full border border-dim"></span>Every client{{if not .Client}}<span class="ml-auto text-amber">{{template "icon-check" 12}}</span>{{end}}</a>
+{{range .Clients}}
+<a href="{{.URL}}" hx-get="{{.URL}}" {{template "nav"}} class="flex h-9 items-center gap-2.5 rounded-lg px-3 text-[13px] no-underline transition hover:bg-line max-lg:h-11 max-lg:text-sm {{if .Selected}}text-fg{{else}}text-fg2{{end}}"><span class="size-2 rounded-full" style="background: {{.Color}}"></span>{{.Name}}{{if .Selected}}<span class="ml-auto text-amber">{{template "icon-check" 12}}</span>{{end}}</a>
+{{end}}
+</div>
+{{end}}
+
+{{/* Today is always there; dimmed while you're already looking at it. */}}
+{{define "today"}}<a href="{{.TodayURL}}" hx-get="{{.TodayURL}}" {{template "nav"}} {{if .IsCurrent}}aria-current="date"{{end}} class="flex h-10 shrink-0 items-center rounded-full border px-3.5 text-[13px] no-underline transition lg:h-9 {{if .IsCurrent}}border-line text-dim{{else}}cm-pop border-amber font-semibold text-amber hover:bg-[#241f17]{{end}}">Today</a>{{end}}
+
+{{define "today-mini"}}<a href="{{.TodayURL}}" hx-get="{{.TodayURL}}" {{template "nav"}} {{if .IsCurrent}}aria-current="date"{{end}} class="flex h-6 items-center rounded-full border px-2.5 text-[11px] no-underline transition {{if .IsCurrent}}border-line text-dim{{else}}cm-pop border-amber font-semibold text-amber{{end}}">Today</a>{{end}}
+
+{{define "toolbar"}}
+{{/* Phones: a centered date pager on top; view switch, Guesses toggle and
+     a filter button below. Desktop: one row. */}}
+<div class="flex flex-col gap-3 lg:hidden">
+<div class="flex items-center gap-2">
+{{if not .GuessesOn}}<a href="{{.PrevURL}}" hx-get="{{.PrevURL}}" {{template "nav-prev"}} aria-label="Previous" class="flex size-10 shrink-0 items-center justify-center rounded-full border border-line text-mute no-underline active:bg-card"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>{{end}}
+<div class="flex min-w-0 flex-1 flex-col items-center gap-1">
+<span class="text-[17px] leading-tight font-semibold">{{.RangeLabel}}</span>
+{{if not .GuessesOn}}{{template "today-mini" .}}{{end}}
+</div>
+{{if not .GuessesOn}}
+<a href="{{.NextURL}}" hx-get="{{.NextURL}}" {{template "nav-next"}} aria-label="Next" class="flex size-10 shrink-0 items-center justify-center rounded-full border border-line text-mute no-underline active:bg-card"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></a>{{end}}
+</div>
+<div class="flex items-center gap-2">
+<nav aria-label="View" class="grid min-w-0 flex-1 grid-cols-2 gap-0.5 rounded-full border border-line bg-card p-[3px]">
+<a href="{{.WeekURL}}" hx-get="{{.WeekURL}}" {{template "nav-switch"}} class="flex h-[34px] items-center justify-center rounded-full text-[13px] no-underline transition {{if .IsWeek}}bg-line font-semibold text-fg{{else}}text-mute{{end}}" {{if .IsWeek}}aria-current="page"{{end}}>Week</a>
+<a href="{{.AgendaURL}}" hx-get="{{.AgendaURL}}" {{template "nav-switch"}} class="flex h-[34px] items-center justify-center rounded-full text-[13px] no-underline transition {{if .IsAgenda}}bg-line font-semibold text-fg{{else}}text-mute{{end}}" {{if .IsAgenda}}aria-current="page"{{end}}>Agenda</a>
+</nav>
+{{if .Tagging}}
+<a href="{{.GuessesToggleURL}}" hx-get="{{.GuessesToggleURL}}" {{template "nav"}} aria-pressed="{{if .GuessesOn}}true{{else}}false{{end}}" class="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-amber px-3.5 text-[13px] text-amber-hi no-underline transition {{if .GuessesOn}}bg-[#2e2619] font-semibold{{end}}">Guesses <span class="font-mono text-[11px]">{{.GuessCount}}</span></a>
+<details class="relative shrink-0" hx-on:toggle="if (!this.open) { const s = this.querySelector('[data-sheet]'); s.removeAttribute('style'); delete s.dataset.snap; delete s.cmNormal }">
+<summary aria-label="Filter by client" class="relative flex size-10 cursor-pointer items-center justify-center rounded-full border text-mute transition {{if .Client}}border-line2 bg-card text-fg{{else}}border-line{{end}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+{{if .Client}}{{range .Clients}}{{if .Selected}}<span class="absolute -top-0.5 -right-0.5 size-3 rounded-full shadow-[0_0_0_2px_#121418]" style="background: {{.Color}}"></span>{{end}}{{end}}{{end}}
+</summary>
+{{template "client-menu" .}}
+</details>
+{{end}}
+</div>
+</div>
+
+{{/* Desktop: view switch left, date pager centered, filters right. */}}
+<div class="hidden grid-cols-[1fr_auto_1fr] items-center gap-3 lg:grid">
+<nav aria-label="View" class="flex gap-0.5 justify-self-start rounded-full border border-line bg-card p-[3px]">
+<a href="{{.WeekURL}}" hx-get="{{.WeekURL}}" {{template "nav-switch"}} class="flex h-[34px] items-center rounded-full px-4 text-[13px] no-underline transition {{if .IsWeek}}cm-switch-on bg-line font-semibold text-fg{{else}}text-mute hover:text-fg{{end}}" {{if .IsWeek}}aria-current="page"{{end}}>Week</a>
+<a href="{{.AgendaURL}}" hx-get="{{.AgendaURL}}" {{template "nav-switch"}} class="flex h-[34px] items-center rounded-full px-4 text-[13px] no-underline transition {{if .IsAgenda}}cm-switch-on bg-line font-semibold text-fg{{else}}text-mute hover:text-fg{{end}}" {{if .IsAgenda}}aria-current="page"{{end}}>Agenda</a>
+</nav>
+<div class="flex items-center gap-1">
+{{if .GuessesOn}}<span class="px-2 text-center text-[15px] font-semibold">{{.RangeLabel}}</span>{{else}}
+<a href="{{.PrevURL}}" hx-get="{{.PrevURL}}" {{template "nav-prev"}} aria-label="Previous" class="flex size-9 items-center justify-center rounded-full border border-line text-mute no-underline transition hover:border-line2 hover:text-fg"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>
+<span class="min-w-[128px] px-2 text-center text-[15px] font-semibold">{{.RangeLabel}}</span>
+<a href="{{.NextURL}}" hx-get="{{.NextURL}}" {{template "nav-next"}} aria-label="Next" class="flex size-9 items-center justify-center rounded-full border border-line text-mute no-underline transition hover:border-line2 hover:text-fg"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></a>
+<span class="ml-1">{{template "today" .}}</span>{{end}}
+</div>
+{{if .Tagging}}
+<div class="flex items-center gap-1.5 justify-self-end">
+<a href="{{.AllURL}}" hx-get="{{.AllURL}}" {{template "nav"}} class="flex h-8 shrink-0 items-center rounded-full px-3.5 text-[13px] no-underline transition {{if and (not .GuessesOn) (not .Client)}}bg-line text-fg{{else}}text-mute hover:text-fg{{end}}">All</a>
+<a href="{{.GuessesURL}}" hx-get="{{.GuessesURL}}" {{template "nav"}} class="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-amber px-3.5 text-[13px] text-amber-hi no-underline transition {{if .GuessesOn}}bg-[#2e2619]{{else}}hover:bg-[#241f17]{{end}}">Guesses <span class="font-mono text-[11px]">{{.GuessCount}}</span></a>
+<details class="relative shrink-0" hx-on:toggle="if (!this.open) { const s = this.querySelector('[data-sheet]'); s.removeAttribute('style'); delete s.dataset.snap; delete s.cmNormal }">
+<summary class="relative flex h-8 cursor-pointer items-center gap-2 rounded-full border border-line2 pr-9 pl-3.5 text-[13px] whitespace-nowrap text-mute transition hover:text-fg">
+{{if .Client}}{{range .Clients}}{{if .Selected}}<span class="size-2 rounded-full" style="background: {{.Color}}"></span>{{.Name}}{{end}}{{end}}{{else}}Every client{{end}}
+{{template "chev"}}
+</summary>
+{{template "client-menu" .}}
+</details>
+</div>
+{{end}}
+</div>
+{{end}}
+
+{{/* ---- tags and chips ---- */}}
+
+{{define "tag"}}
+{{/* One pill, read left to right: calendar it came from › client it's for. */}}
+<span class="flex h-7 max-w-full items-center gap-2 rounded-full px-3 text-xs whitespace-nowrap {{if and .Tagged (or .Guess (not .Entity))}}border border-dashed border-amber{{else}}bg-raise{{end}} {{if .Just}}cm-settle{{end}}">
+<span class="shrink-0 text-dim {{if .Tagged}}hidden sm:inline{{end}}">{{.Cal}}</span>
+{{if .Tagged}}
+<svg class="hidden shrink-0 text-dim sm:block" aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+<span class="flex min-w-0 items-center gap-1.5 font-medium {{if or .Guess (not .Entity)}}text-amber-hi{{else}}text-fg{{end}}">
+{{if .Entity}}<span class="size-2 shrink-0 rounded-full" style="background: {{.EntityColor}}"></span><span class="truncate">{{.Entity}}</span>{{else}}<span class="truncate">No client yet</span>{{end}}
+</span>
+{{end}}
+</span>
+{{end}}
+
+{{define "icon-sun"}}<svg aria-hidden="true" width="{{.}}" height="{{.}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 18a5 5 0 0 0-10 0"/><path d="M12 9V2M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1M8 6l4-4 4 4"/></svg>{{end}}
+
+{{define "ooo"}}
+<a id="ooo-{{.ID}}" href="{{.SelectURL}}" hx-get="{{.SelectURL}}" {{template "select"}}
+  class="cm-ooo cm-rise mb-2 flex items-center gap-3.5 rounded-xl border border-[#2f4447] px-4 py-3.5 no-underline transition hover:border-[#3f5a5d] {{if .Selected}}shadow-[0_0_0_2px_#121418,0_0_0_4px_#e8a95b]{{end}}" style="animation-delay: {{.Delay}}ms">
+<span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#1f3336] text-[#8fd3cd]">{{template "icon-sun" 18}}</span>
+<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+<span class="text-sm font-semibold text-[#d9efec]">Out of office{{if ne .Title "OOO"}} <span class="font-normal text-[#a9c9c5]">· {{.Title}}</span>{{end}}</span>
+<span class="font-mono text-xs text-[#8fb4b0]">{{.OOONote}}</span>
+</span>
+<span class="hidden shrink-0 items-center gap-1.5 rounded-full bg-[#1b2a2c] px-2.5 py-1 text-[11px] text-[#a9c9c5] sm:flex"><span class="size-[7px] rounded-full" style="background: {{.CalColor}}"></span>{{.Cal}}</span>
+</a>
+{{end}}
+
+{{define "away"}}
+<a href="{{.SelectURL}}" hx-get="{{.SelectURL}}" {{template "select"}} class="cm-rise inline-flex h-8 items-center gap-2 rounded-full border border-dashed border-[#3f5a5d] px-3 text-[13px] text-[#a9c9c5] no-underline transition hover:text-[#d9efec]" style="animation-delay: {{.Delay}}ms">{{template "icon-sun" 14}}Out: <span class="font-semibold text-[#d9efec]">{{.AwayWho}}</span><span class="font-mono text-[11px] text-[#8fb4b0]">{{.OOONote}}</span></a>
+{{end}}
+
+{{define "confirm"}}
+{{if and .Just .You}}
+<span class="flex h-[30px] min-w-[104px] items-center justify-center gap-1.5 rounded-full bg-ok-bg px-3.5 text-xs font-semibold text-ok"><span class="cm-pop">{{template "icon-check" 14}}</span>Saved</span>
+{{else if .ConfirmVals}}
+<button type="button" class="cm-btn relative z-10 flex h-[30px] min-w-[104px] items-center justify-center rounded-full bg-amber px-3.5 text-xs font-semibold text-amber-ink transition hover:bg-amber-hi"
+  hx-post="/ui/correct" hx-vals="{{.ConfirmVals}}" hx-target="#view-content" hx-swap="outerMorph">
+<span class="cm-btn-idle">Confirm</span><span class="cm-btn-busy items-center gap-1.5">{{template "icon-arc"}}Saving</span>
+</button>
+{{end}}
+{{end}}
+
+{{define "chips"}}
+<div class="pointer-events-none relative z-10 flex flex-wrap items-center gap-1.5 [&_a]:pointer-events-auto">
+{{if .MeetURL}}<a href="{{.MeetURL}}" target="_blank" rel="noopener noreferrer" class="inline-flex h-6 items-center gap-1.5 rounded-full bg-join px-2.5 text-[11px] font-semibold text-join-fg no-underline transition hover:brightness-125">{{template "icon-video" 12}}Join {{.MeetKind}}</a>{{end}}
+{{if .People}}<span class="inline-flex h-6 items-center gap-1.5 px-1 text-[11px] text-dim">{{.People}}</span>{{end}}
+{{if .HasAgenda}}<span class="inline-flex h-6 items-center gap-1 px-1 text-[11px] text-dim">{{template "icon-doc" 12}}agenda</span>{{end}}
+{{if .LinkURL}}<a href="{{.LinkURL}}" target="_blank" rel="noopener noreferrer" class="inline-flex h-6 items-center gap-1 rounded-full border border-line2 px-2.5 text-[11px] text-mute no-underline transition hover:text-fg">{{.LinkLabel}}{{template "icon-ext"}}</a>{{end}}
+{{if .MapURL}}<a href="{{.MapURL}}" target="_blank" rel="noopener noreferrer" class="inline-flex h-6 items-center gap-1 rounded-full border border-line2 px-2.5 text-[11px] text-mute no-underline transition hover:text-fg">{{template "icon-pin"}}{{.MapLabel}}</a>{{end}}
+</div>
+{{end}}
+
+{{/* ---- agenda ---- */}}
+
+{{define "agenda"}}
+{{with .Agenda}}
+<div class="flex flex-col gap-6">
+{{with .Earlier}}
+{{/* One element that stays put across open/closed (id + morph), so the
+     browser animates its real corners and height: a true morph. */}}
+<div id="earlier" class="cm-earlier flex flex-col" {{if .Open}}data-open{{end}}>
+<h2 class="mb-2 flex items-baseline gap-2.5 text-[15px] font-semibold text-mute">{{.Label}}<span class="font-mono text-xs font-normal text-dim">{{.Count}} {{plural .Count "meeting" "meetings"}} · all finished</span></h2>
+<div class="cm-earlier-box border border-line bg-card">
+<a href="{{if .Open}}{{.FoldURL}}{{else}}{{.OpenURL}}{{end}}" hx-get="{{if .Open}}{{.FoldURL}}{{else}}{{.OpenURL}}{{end}}" hx-target="#view-content" hx-swap="outerMorph" hx-push-url="true"
+  aria-expanded="{{if .Open}}true{{else}}false{{end}}" class="cm-earlier-head relative flex items-center gap-4 px-5 text-mute no-underline">
+<svg class="cm-earlier-chev shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+<span class="grid min-w-0 flex-1 items-center [&>*]:[grid-area:1/1]">
+<span class="cm-earlier-sum flex min-w-0 items-center gap-4">
+<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+<span class="truncate text-sm font-semibold text-fg2">{{.Titles}}</span>
+<span class="font-mono text-xs text-dim">{{.Span}}{{if .Guesses}} · {{.Guesses}}{{end}}</span>
+</span>
+<span class="hidden items-center pl-1 sm:flex" aria-hidden="true">{{range .Dots}}<span class="-ml-1 size-2.5 rounded-full shadow-[0_0_0_2px_#1a1d23]" style="background: {{.}}"></span>{{end}}</span>
+<span class="shrink-0 text-[13px] font-semibold text-amber">Show {{.Count}}</span>
+</span>
+<span class="cm-earlier-lbl flex items-center gap-3 text-[13px]">
+<span class="flex-1">Finished today · {{.Span}}</span><span class="font-semibold text-amber">Hide</span>
+</span>
+</span>
+</a>
+<div class="cm-earlier-rows"><div class="min-h-0 overflow-hidden"><div class="border-t border-line3 opacity-80">
+{{range $i, $it := .Items}}<div class="cm-erow" style="--i: {{$i}}">{{template "item" $it}}</div>{{end}}
+</div></div></div>
+</div>
+</div>
+{{end}}
+<div class="cm-days flex flex-col gap-6">
+{{range .Days}}
+<div class="flex flex-col">
+<h2 class="mb-2 flex items-baseline gap-2.5 text-[15px] font-semibold">{{.Label}}<span class="font-mono text-xs font-normal {{if .OOO}}text-[#8fd3cd]{{else}}text-dim{{end}}">{{.Count}}</span></h2>
+{{range .OOO}}{{template "ooo" .}}{{end}}
+{{if .Away}}<div class="mb-2 flex flex-wrap gap-1.5">{{range .Away}}{{template "away" .}}{{end}}</div>{{end}}
+{{if .Items}}<div class="overflow-hidden rounded-xl border border-line bg-card">{{range .Items}}{{template "item" .}}{{end}}</div>{{end}}
+</div>
+{{end}}
+</div>
+</div>
+{{end}}
+{{if .EmptyFilterResult}}
+<div class="cm-rise flex flex-col items-center gap-3 rounded-xl border border-dashed border-line2 px-6 py-14 text-center">
+<span class="flex size-10 items-center justify-center rounded-full bg-ok-bg text-ok">{{template "icon-check" 18}}</span>
+<p class="text-[15px] font-semibold">Nothing here</p>
+<p class="max-w-sm text-sm text-mute">{{if .GuessesOn}}No guesses left. Every upcoming meeting is tagged by a rule or by you.{{else}}No meetings match this view.{{end}}</p>
+<a href="{{.AllURL}}" hx-get="{{.AllURL}}" {{template "nav"}} class="mt-1 flex h-9 items-center rounded-full border border-line2 px-4 text-[13px] text-fg2 no-underline hover:text-fg">Show everything</a>
+</div>
+{{end}}
+{{end}}
+
+{{define "item"}}
+{{if .Gap}}
+<div class="flex h-[34px] items-center gap-3.5 bg-gapbg px-4 {{if not .FirstInSection}}border-t border-line3{{end}}">
+{{template "zig"}}
+<span class="font-mono text-xs whitespace-nowrap text-dim">{{.GapTimes}} · <span class="text-[#b7bdc6]">{{.GapLen}}</span></span>
+{{template "zig"}}
+</div>
+{{else}}{{with .Row}}
+<div id="{{.ID}}" class="{{if .Just}}cm-flash{{else}}cm-rise{{end}} relative flex items-start gap-4 px-4 py-3 transition-colors duration-300 sm:gap-[18px] {{if .Selected}}bg-sel{{else if .Guess}}bg-guessbg hover:bg-sel{{else}}hover:bg-[#1e2128]{{end}} {{if not $.FirstInSection}}border-t border-line3{{end}}" style="animation-delay: {{.Delay}}ms{{if not .AllDay}}; --vt: {{.ID}}{{end}}">
+{{if .Selected}}<span class="cm-selbar pointer-events-none absolute top-0 bottom-0 left-0 w-[3px] bg-amber" aria-hidden="true"></span>{{end}}
+<a href="{{.SelectURL}}" hx-get="{{.SelectURL}}" {{template "select"}} class="absolute inset-0" aria-label="Details for {{.Title}}"></a>
+<div class="hidden w-[104px] shrink-0 pt-[3px] font-mono text-[13px] whitespace-nowrap sm:block">{{.Time}}{{if .Dur}} <span class="text-xs text-dim">({{.Dur}})</span>{{end}}</div>
+{{/* Rows with a Confirm (or the Saved badge that replaces it) get more air
+     on wide screens, where the button sits right under the client pill. */}}
+<div class="flex min-w-0 flex-1 flex-col gap-1.5 {{if or .Guess .Just}}sm:gap-3{{end}}">
+{{/* Phones: time and calendar on top, client pill beside them, then a
+     full-width title. */}}
+<div class="flex min-w-0 items-center gap-2 sm:hidden">
+<span class="shrink-0 font-mono text-[13px] whitespace-nowrap">{{.Time}}{{if .Dur}} <span class="text-xs text-dim">({{.Dur}})</span>{{end}}</span>
+<span class="truncate text-xs text-dim">· {{.Cal}}</span>
+<span class="pointer-events-none ml-auto flex min-w-0 shrink justify-end">{{template "tag" .}}</span>
+</div>
+<div class="flex items-start gap-3">
+<span class="min-w-0 flex-1 text-[15px] leading-snug font-semibold sm:pt-[3px] sm:text-sm">{{.Title}}{{if .AllDayNote}} <span class="font-normal text-dim">· {{.AllDayNote}}</span>{{end}}</span>
+<span class="pointer-events-none hidden max-w-[55%] shrink-0 justify-end sm:flex">{{template "tag" .}}</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="min-w-0 flex-1">{{template "chips" .}}</div>
+<span class="pointer-events-none shrink-0 empty:hidden [&_button]:pointer-events-auto">{{template "confirm" .}}</span>
+</div>
+{{if .Guess}}{{if .Why}}<span class="text-xs text-mute">{{.Why}}</span>{{end}}{{end}}
+</div>
+</div>
+{{end}}{{end}}
+{{end}}
+
+{{/* ---- week ---- */}}
+
+{{define "week"}}
+<div class="overflow-x-auto rounded-xl">
+<div class="min-w-[760px]">
+<div class="mb-2 grid gap-1 pl-[52px]" style="grid-template-columns: {{.ColTemplate}}">
+{{range .Cols}}<div class="flex items-baseline gap-1.5 pl-1"><span class="text-[13px] font-semibold {{if .IsToday}}text-amber{{end}}">{{.DOW}}</span><span class="font-mono text-xs text-dim">{{.DateLabel}}</span></div>{{end}}
+</div>
+{{if .AllDay}}
+<div class="mb-2 flex">
+<div class="w-[52px] shrink-0 pt-1 pr-2.5 text-right font-mono text-[10px] text-dim">all day</div>
+<div class="grid flex-1 gap-1" style="grid-template-columns: {{$.ColTemplate}}">
+{{range .AllDay}}
+<a id="ad-{{.Row.SeriesID}}" href="{{.Row.SelectURL}}" hx-get="{{.Row.SelectURL}}" {{template "select"}}
+  class="cm-rise flex h-7 items-center gap-2 truncate rounded-md px-2.5 text-xs font-semibold no-underline {{if or .Row.OOO .Row.AwayWho}}cm-ooo text-[#d9efec]{{end}} {{if .Row.Selected}}shadow-[0_0_0_2px_#121418,0_0_0_4px_#e8a95b]{{end}}"
+  {{if or .Row.OOO .Row.AwayWho}}style="grid-column: {{.GridColumn}}; grid-row: {{.GridRow}}; border: 1px {{if .Row.OOO}}solid{{else}}dashed{{end}} #3f5a5d"{{else}}style="grid-column: {{.GridColumn}}; grid-row: {{.GridRow}}; background: color-mix(in srgb, {{.Row.EntityColor}} 22%, #16191e); border: 1px {{if .Row.Guess}}dashed #e8a95b{{else}}solid color-mix(in srgb, {{.Row.EntityColor}} 50%, transparent){{end}}"{{end}}>{{if or .Row.OOO .Row.AwayWho}}<span class="text-[#8fd3cd]">{{template "icon-sun" 13}}</span>{{if .Row.OOO}}Out of office{{else}}Out: {{.Row.AwayWho}}{{end}}{{else}}{{.Row.Title}}{{end}}</a>
+{{end}}
+</div>
+</div>
+{{end}}
+<div class="flex">
+<div class="relative w-[52px] shrink-0" style="height: {{.Height}}px">
+{{range .Hours}}<div class="absolute right-2.5 -translate-y-[7px] font-mono text-[11px] text-dim" style="top: {{.Top}}px">{{.Label}}</div>{{end}}
+</div>
+<div class="cm-hours grid flex-1 gap-1" style="grid-template-columns: {{.ColTemplate}}">
+{{range .Cols}}
+<div class="relative rounded-md {{if .OOO}}cm-ooo-col{{else if .IsToday}}bg-[#191c22]{{else}}bg-bar{{end}}" style="height: {{$.Height}}px">
+{{range $i, $b := .Blocks}}
+<a id="wk-{{.Row.ID}}" href="{{.Row.SelectURL}}" hx-get="{{.Row.SelectURL}}" {{template "select"}} title="{{.Row.Title}}"
+  class="{{if .Row.Just}}cm-settle{{else}}cm-rise{{end}} absolute box-border overflow-hidden rounded-[5px] px-[7px] py-1 no-underline transition hover:brightness-125 {{if .Row.Selected}}z-10 shadow-[0_0_0_2px_#16191e,0_0_0_4px_#e8a95b]{{else if $i}}shadow-[0_0_0_2px_#16191e]{{end}}"
+  style="top: {{.Top}}px; height: {{.Height}}px; {{.Left}}; animation-delay: {{mul $i 30}}ms; --vt: {{.Row.ID}}; background: color-mix(in srgb, {{.Row.EntityColor}} 22%, #16191e); border: 1px {{if .Row.Guess}}dashed #e8a95b{{else}}solid color-mix(in srgb, {{.Row.EntityColor}} 50%, transparent){{end}}">
+<div class="cm-clamp text-xs leading-[15px] font-semibold" style="-webkit-line-clamp: {{.Lines}}">{{.Row.Title}}</div>
+{{if .ShowTime}}<div class="mt-0.5 font-mono text-[10px] leading-[13px] text-mute">{{.TimeLabel}}</div>{{end}}
+</a>
+{{end}}
+{{if .HasNow}}<div class="cm-now pointer-events-none absolute right-0 left-0 z-20 h-0.5 bg-amber" style="top: {{.NowTop}}px" aria-hidden="true"></div>{{end}}
+</div>
+{{end}}
+</div>
+</div>
+</div>
+</div>
+{{end}}
+
+{{/* ---- side panel ---- */}}
+
+{{define "grab"}}<button type="button" data-grab aria-label="Expand or drag the sheet" class="group sticky top-0 z-10 -mb-2 flex h-7 w-full shrink-0 cursor-grab touch-none items-center justify-center self-stretch bg-inherit active:cursor-grabbing lg:hidden"><span class="h-1 w-10 rounded-full bg-line2 transition-all duration-200 group-hover:w-12 group-hover:bg-fg group-focus-visible:w-12 group-focus-visible:bg-fg group-active:w-12 group-active:bg-fg" aria-hidden="true"></span></button>{{end}}
+
+{{define "close-attrs"}}data-close hx-get="{{.}}" hx-trigger="cm-close" hx-target="#view-content" hx-swap="outerMorph transition:true" hx-push-url="true" hx-on:click="event.preventDefault(); cm.closeSheet(this)"{{end}}
+
+{{define "panel"}}
+<a href="{{.CloseURL}}" {{template "close-attrs" .CloseURL}} class="cm-backdrop fixed inset-0 z-30 bg-black/55 lg:hidden" aria-label="Close details"></a>
+<div data-sheet class="cm-sheet cm-panel fixed inset-x-0 bottom-0 z-40 flex max-h-[70dvh] flex-col gap-5 overflow-y-auto overscroll-contain rounded-t-2xl border border-line bg-card p-5 pt-0 shadow-[0_-18px_40px_rgba(0,0,0,.45)] lg:static lg:max-h-none lg:overflow-visible lg:overscroll-auto lg:rounded-xl lg:pt-5 lg:shadow-none">
+{{template "grab"}}
+<div class="flex items-start gap-3">
+<h2 class="cm-p-title m-0 flex-1 text-[19px] leading-snug font-semibold">{{.Row.Title}}</h2>
+<a href="{{.CloseURL}}" {{template "close-attrs" .CloseURL}} aria-label="Close details" class="flex size-9 shrink-0 items-center justify-center rounded-full border border-line text-mute no-underline transition hover:rotate-90 hover:text-fg"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></a>
+</div>
+<div class="cm-p-when flex items-center gap-3.5">
+<div aria-hidden="true" class="flex w-[54px] shrink-0 flex-col overflow-hidden rounded-xl border border-line2 bg-bar text-center">
+<span class="bg-line py-[3px] text-[10px] font-semibold tracking-[0.1em] text-mute">{{.Mon}}</span>
+<span class="pt-1.5 text-[21px] leading-none font-bold">{{.Day}}</span>
+<span class="pt-[3px] pb-[5px] text-[10px] text-dim">{{.DOW}}</span>
+</div>
+<div class="flex flex-col gap-1.5">
+<span class="font-mono text-base font-medium">{{.TimeRange}}{{if .Row.Dur}} <span class="text-[13px] text-dim">({{.Row.Dur}})</span>{{end}}</span>
+<span class="flex items-center gap-1.5 text-xs text-dim"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>{{.Repeat}}</span>
+</div>
+</div>
+<div class="flex flex-wrap gap-2">
+{{if .Row.MeetURL}}<a href="{{.Row.MeetURL}}" target="_blank" rel="noopener noreferrer" class="inline-flex h-9 items-center gap-2 rounded-full bg-join px-4 text-[13px] font-semibold text-join-fg no-underline transition hover:brightness-125">{{template "icon-video" 16}}Join {{.Row.MeetKind}}{{template "icon-ext"}}</a>{{end}}
+<span class="inline-flex h-9 items-center gap-2 rounded-full border border-line2 px-3.5 text-[13px] text-fg2"><span class="size-2 rounded-full" style="background: {{.Row.CalColor}}"></span>{{.Row.Cal}} calendar</span>
+{{if .DocURL}}<a href="{{.DocURL}}" target="_blank" rel="noopener noreferrer" class="inline-flex h-9 items-center gap-2 rounded-full border border-line2 px-3.5 text-[13px] text-fg2 no-underline transition hover:border-mute hover:text-fg">{{template "icon-doc" 14}}<span class="size-2 rounded-full" style="background: {{.DocColor}}"></span>{{.DocName}} docs{{template "icon-ext"}}</a>{{end}}
+{{if .Row.MapURL}}<a href="{{.Row.MapURL}}" target="_blank" rel="noopener noreferrer" class="inline-flex h-9 items-center gap-2 rounded-full border border-line2 px-3.5 text-[13px] text-fg2 no-underline hover:text-fg">{{template "icon-pin"}}{{.Row.MapLabel}}</a>{{end}}
+{{if .Row.LinkURL}}<a href="{{.Row.LinkURL}}" target="_blank" rel="noopener noreferrer" class="inline-flex h-9 items-center gap-2 rounded-full border border-line2 px-3.5 text-[13px] text-fg2 no-underline hover:text-fg">{{.Row.LinkLabel}}{{template "icon-ext"}}</a>{{end}}
+</div>
+{{if .TaggingEnabled}}
+<div class="cm-p-tag flex items-center gap-2.5">
+<span class="size-2.5 rounded-full" style="background: {{.Row.EntityColor}}"></span>
+<span class="flex-1 text-[15px] font-semibold {{if .Row.Just}}cm-settle{{end}}">{{if .Row.Entity}}{{.Row.Entity}}{{else}}No client yet{{end}}</span>
+<span class="flex h-6 items-center rounded-full px-2.5 text-[11px] font-semibold {{if .Row.You}}bg-fg text-ink{{else if .Row.Guess}}border border-dashed border-amber text-amber-hi{{else}}border border-dim{{end}}">{{.Row.ViaLabel}}</span>
+</div>
+{{if .WhyChips}}
+<div class="flex flex-col gap-2">
+<span class="text-xs tracking-[0.06em] text-dim uppercase">Why</span>
+<div class="flex flex-wrap gap-1.5">{{range .WhyChips}}<span class="rounded-md bg-raise px-2 py-1 text-[13px] text-fg2">{{.}}</span>{{end}}</div>
+</div>
+{{end}}
+{{end}}
+{{if .People}}
+<div class="flex flex-col gap-2">
+<span class="text-xs tracking-[0.06em] text-dim uppercase">People · {{.PeopleCount}}</span>
+<div class="flex flex-col gap-1.5 text-[13px]">
+{{range .People}}<div class="flex justify-between gap-3"><span class="truncate">{{.Who}}{{if .Organizer}} <span class="text-dim">· organizer</span>{{end}}</span><span class="shrink-0 text-dim">{{.Domain}}</span></div>{{end}}
+</div>
+</div>
+{{end}}
+{{if .Agenda}}
+<div class="flex flex-col gap-2">
+<span class="text-xs tracking-[0.06em] text-dim uppercase">Agenda</span>
+{{if .AgendaLong}}
+<details class="group">
+<summary class="cursor-pointer text-[13px] leading-relaxed whitespace-pre-line text-mute group-open:hidden">{{.AgendaShort}} <span class="text-amber">Show full agenda</span></summary>
+<p class="m-0 text-[13px] leading-relaxed whitespace-pre-line text-mute">{{.Agenda}}</p>
+</details>
+{{else}}
+<p class="m-0 text-[13px] leading-relaxed whitespace-pre-line text-mute">{{.Agenda}}</p>
+{{end}}
+</div>
+{{else if not .People}}
+<p class="m-0 text-[13px] text-dim">This feed doesn't include people or an agenda for this meeting.</p>
+{{end}}
+{{if .TaggingEnabled}}
+{{/* Sticky footer: the client controls stay in reach however long the
+     details run; the details scroll underneath. Sticky offsets count from
+     inside the scroller's padding, so on the phone (where the padded sheet
+     itself scrolls) bottom is -1.25rem to sit flush with the edge instead of
+     leaving a strip where text shows through. */}}
+<form class="sticky bottom-0 max-lg:-bottom-5 z-10 -mx-5 -mb-5 mt-auto flex flex-col gap-2 border-t border-line3 bg-card px-5 pt-3.5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-16px_24px_-14px_rgba(0,0,0,.7)] lg:rounded-b-xl lg:pb-5" hx-post="/ui/correct" hx-vals="{{.PinVals}}" hx-target="#view-content" hx-swap="outerMorph">
+<label for="panel-client" class="text-xs text-dim">Client for every meeting in this series</label>
+<div class="flex gap-2">
+<span class="relative flex min-w-0 flex-1">
+<select id="panel-client" name="entity" class="h-11 w-full min-w-0 cursor-pointer rounded-xl border border-line2 bg-raise pr-10 pl-3 text-sm text-fg">
+{{range .Options}}<option value="{{.Name}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>{{end}}
+</select>
+{{template "chev"}}
+</span>
+<button type="submit" class="cm-btn flex h-11 min-w-[92px] shrink-0 items-center justify-center gap-2 rounded-full bg-amber px-5 text-sm font-semibold text-amber-ink transition hover:bg-amber-hi"
+  data-current="{{.Row.Entity}}" data-guess="{{if .Row.Guess}}1{{end}}">
+<span class="cm-btn-idle" :text="q('#panel-client').value === attr['data-current'] && attr['data-guess'] ? 'Confirm' : 'Save'">{{if .Row.Guess}}Confirm{{else}}Save{{end}}</span>
+<span class="cm-btn-busy items-center gap-2">{{template "icon-arc"}}</span>
+</button>
+</div>
+{{if .CanRemove}}
+<button type="button" class="cm-btn self-start text-xs text-mute underline decoration-line2 underline-offset-4 transition hover:text-fg"
+  hx-post="/ui/correct" hx-vals="{{.RemoveVals}}" hx-target="#view-content" hx-swap="outerMorph">
+<span class="cm-btn-idle">Reset to automatic</span><span class="cm-btn-busy items-center gap-1.5">{{template "icon-arc"}}Resetting</span>
+</button>
+{{end}}
+</form>
+{{end}}
+</div>
+{{end}}
+
+{{define "panel-empty"}}
+<div class="hidden flex-col gap-4 lg:flex">
+{{if .Tagging}}
+<div class="cm-panel flex flex-col gap-3 rounded-xl border border-line bg-card p-5">
+<h2 class="cm-p-title m-0 text-[15px] font-semibold">{{if .GuessCount}}{{.GuessCount}} {{plural .GuessCount "meeting" "meetings"}} tagged by a guess{{else}}Everything's tagged{{end}}</h2>
+<p class="m-0 text-[13px] leading-relaxed text-mute">{{if .GuessCount}}Pick one to see why, then confirm it or choose the right client. Every fix sticks for the whole series and teaches the model.{{else}}Every upcoming meeting is tagged by a rule or by you.{{end}}</p>
+{{if .GuessCount}}{{if not .GuessesOn}}<a href="{{.GuessesURL}}" hx-get="{{.GuessesURL}}" {{template "nav"}} class="flex h-10 items-center justify-center rounded-full border border-dashed border-amber text-[13px] font-semibold text-amber-hi no-underline hover:bg-[#241f17]">Review guesses</a>{{end}}{{end}}
+</div>
+{{if .Corrections}}
+<div class="cm-rise flex flex-col gap-1 rounded-xl border border-line bg-card p-5" style="animation-delay: 60ms">
+<h2 class="m-0 mb-2 text-xs tracking-[0.06em] text-dim uppercase">Set by you</h2>
+{{range .Corrections}}
+<div class="flex items-center gap-2.5 border-t border-line3 py-2.5 text-[13px] first-of-type:border-t-0">
+<span class="size-2 shrink-0 rounded-full" style="background: {{.Color}}"></span>
+<span class="min-w-0 flex-1"><span class="block truncate">{{.Name}}</span><span class="text-xs text-dim">{{.Entity}}{{if .When}} · {{.When}}{{end}}</span></span>
+<button type="button" class="cm-btn h-8 rounded-full border border-line2 px-3 text-xs text-mute transition hover:text-fg" hx-post="/ui/correct" hx-vals="{{.RemoveVals}}" hx-target="#view-content" hx-swap="outerMorph"><span class="cm-btn-idle">Reset</span><span class="cm-btn-busy items-center">{{template "icon-arc"}}</span></button>
+</div>
+{{end}}
+</div>
+{{end}}
+{{end}}
+</div>
+{{end}}

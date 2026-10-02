@@ -1,0 +1,7 @@
+.git
+.gitignore
+*.md
+glance-widget.yml
+.env
+.env.*
+calmerge.toml

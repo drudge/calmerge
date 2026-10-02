@@ -1,0 +1,103 @@
+# calmerge config. Mount it at /config/calmerge.toml (or set CONFIG_FILE).
+#
+# Hot-reloaded: calmerge checks this file every 5 seconds and applies edits
+# without a restart. A broken edit is logged and ignored, and the last good
+# config keeps running. Anything left out here falls back to its env var
+# (shown in brackets), then the default.
+#
+# Not in here on purpose: AUTH_TOKEN (a secret) and LISTEN (needs a restart).
+# Keep this file off the /data volume: that mount would hide it.
+
+tz = "America/New_York"   # [TZ_NAME] IANA zone for display and day grouping
+lookahead_days = 30       # [LOOKAHEAD_DAYS]
+lookback_days = 0         # [LOOKBACK_DAYS] bump to 1-2 for multi-day events that started earlier
+refresh_minutes = 15      # [CACHE_TTL_MIN] how often feeds are re-fetched
+http_timeout_seconds = 20 # [HTTP_TIMEOUT_SEC] per-feed fetch timeout
+include_attendees = true  # [INCLUDE_ATTENDEES]
+include_agenda = true     # [INCLUDE_AGENDA]
+
+# By default only Cloudflare-tunnel traffic needs the AUTH_TOKEN bearer token;
+# anything else that reaches the port reads /events and /mcp freely. Set this
+# to true to require the token on every request (Glance then needs the header
+# too). Do that whenever the port isn't private to you.
+require_auth = false      # [REQUIRE_AUTH]
+
+# Where entity corrections and the classifier's long-term memory are saved.
+# Both belong on the /data volume so they survive redeploys.
+corrections_file = "/data/corrections.json" # [CORRECTIONS_FILE]
+lessons_file = "/data/lessons.json"         # [LESSONS_FILE]
+lessons_max_age_days = 365                  # [LESSONS_MAX_AGE_DAYS] forget lessons unseen this long; 0 = never
+
+# ---------------------------------------------------------------------------
+# Feeds [FEEDS]. color is optional (feeds without one take a default palette
+# in order); user/pass for feeds behind HTTP basic auth. Feed URLs are
+# secrets: anyone with the link can read the calendar.
+
+[[feeds]]
+name = "Work"
+url = "https://outlook.office365.com/owa/calendar/.../calendar.ics"
+
+[[feeds]]
+name = "Freelance"
+url = "https://example.com/calendar/.../Calendar.ics"
+color = "#57c46a"
+
+[[feeds]]
+name = "Family"
+url = "https://p00-caldav.icloud.com/published/2/..."
+
+# ---------------------------------------------------------------------------
+# Entities [ENTITIES]: the businesses/clients events get tagged with. Name
+# them the way your own planning docs do, so events join to workstreams.
+# Leave them all out to turn tagging off.
+#
+#   parent     - rollup entity (e.g. the holding company a client belongs to)
+#   color, url - passed through; url = the entity's page in your wiki or
+#                project tool, linked from the review UI
+#   keywords   - whole words, case/punctuation-insensitive; title hits count most
+#   domains    - attendee/organizer email domains
+#   categories - Outlook category names (the entity name always counts)
+#   feeds      - feeds whose otherwise-unplaced events fall back to it
+
+[[entities]]
+name = "Freelance"
+color = "#57c46a"
+keywords = ["Freelance"]
+feeds = ["Freelance"]
+
+[[entities]]
+name = "Northwind Holdings"
+color = "#4699ff"
+url = "https://wiki.example.com/northwind"
+keywords = ["Northwind"]
+feeds = ["Work"]
+
+[[entities]]
+name = "Acme \"Rocket\" Co"
+parent = "Northwind Holdings"
+color = "#2b54e4"
+url = "https://wiki.example.com/acme-rocket"
+keywords = ["ARC", "Acme Rocket Co", "AcmeRocket"]
+domains = ["acmerocket.example"]
+categories = ["ARC"]
+
+[[entities]]
+name = "Globex Records"
+parent = "Northwind Holdings"
+color = "#dc4747"
+url = "https://wiki.example.com/globex"
+keywords = ["Globex", "Initech"]
+categories = ["Globex"]
+
+[[entities]]
+name = "Hooli"
+parent = "Northwind Holdings"
+color = "#fe952e"
+keywords = ["Hooli"]
+domains = ["hooli.example"]
+categories = ["Hooli"]
+
+[[entities]]
+name = "Personal"
+color = "#cf7fd1"
+feeds = ["Family"]

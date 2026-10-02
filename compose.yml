@@ -1,0 +1,50 @@
+services:
+  calmerge:
+    build: .
+    # If you'd rather build/push your own image instead of building here,
+    # replace `build: .` with e.g. image: ghcr.io/<you>/calmerge:v1
+    container_name: calmerge
+    restart: unless-stopped
+    environment:
+      TZ_NAME: America/New_York
+      LOOKAHEAD_DAYS: "30"   # how far forward to show
+      LOOKBACK_DAYS: "0"     # bump to 1-2 if you want multi-day/ongoing events that started earlier
+      CACHE_TTL_MIN: "15"    # server-side cache so the feeds aren't hammered
+      # FEEDS holds the calendar URLs (secrets). Set it in your host's env UI,
+      # or via the .env file next to this compose. See .env.example.
+      FEEDS: ${FEEDS:-}      # optional once calmerge.toml has [[feeds]]
+      # AUTH_TOKEN guards the externally-reachable path (Cloudflare tunnel). Leave
+      # empty to keep the API internal-only; set it to expose /events to Claude.
+      AUTH_TOKEN: ${AUTH_TOKEN:-}
+      # Set to "true" to require AUTH_TOKEN on every request, not just tunnel
+      # traffic (the Glance widget then needs the Authorization header too).
+      REQUIRE_AUTH: ${REQUIRE_AUTH:-false}
+    volumes:
+      # Settings, feeds and entities; hot-reloaded. Copy calmerge.example.toml to
+      # calmerge.toml first (Docker creates a directory if the file is missing).
+      # Kept outside /data so the volume below doesn't hide it.
+      - ./calmerge.toml:/config/calmerge.toml:ro
+      # Entity corrections and the classifier's long-term memory.
+      - calmerge-data:/data
+    expose:
+      - "8076"               # internal: Glance reaches it over the compose network (no token needed)
+    ports:
+      # Bind to loopback only so the host's cloudflared can reach calmerge at
+      # http://localhost:8076 without exposing it on the LAN. Tunnel traffic
+      # arrives with Cloudflare headers and must present AUTH_TOKEN.
+      - "127.0.0.1:8076:8076"
+
+  glance:
+    image: glanceapp/glance:v0.8.6
+    container_name: glance
+    restart: unless-stopped
+    depends_on:
+      - calmerge
+    volumes:
+      - ./glance.yml:/app/config/glance.yml:ro
+      # - ./assets:/app/assets   # uncomment if you use custom assets
+    ports:
+      - "8080:8080"
+
+volumes:
+  calmerge-data:

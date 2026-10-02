@@ -1,0 +1,9 @@
+# Local secrets — FEEDS and AUTH_TOKEN live here, never commit them.
+.env
+.env.*
+!.env.example
+
+# Built binary
+/calmerge
+# Real config holds feed URLs (secrets); calmerge.example.toml is the template.
+calmerge.toml

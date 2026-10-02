@@ -1,0 +1,53 @@
+# Minimal example config that renders the unified calendar widget.
+# If you already have a glance.yml, ignore this file and instead paste the
+# widget block from glance-widget.yml into one of your existing columns.
+pages:
+  - name: Home
+    columns:
+      - size: small
+        widgets:
+          - type: clock
+            hour-format: 12h
+      - size: full
+        widgets:
+          - type: custom-api
+            title: Calendar
+            cache: 15m
+            url: http://calmerge:8076/events
+            template: |
+              {{ $days := .JSON.Array "days" }}
+              {{ if eq (len $days) 0 }}
+                <p style="opacity:.6;">Nothing scheduled in the window.</p>
+              {{ else }}
+              <div class="collapsible-container" data-collapse-after="4">
+                {{ range $di, $day := $days }}
+                  <div {{ if ge $di 4 }}class="collapsible-item"{{ end }} style="margin-bottom:14px;">
+                    <div class="size-h6" style="opacity:.55; text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">{{ $day.String "label" }}</div>
+                    <ul class="list list-gap-8">
+                      {{ range $e := $day.Array "events" }}
+                        {{ $c := $e.String "color" }}
+                        <li>
+                          <div class="flex items-start gap-10">
+                            <div class="size-h6" style="width:58px; flex-shrink:0; padding-top:2px; opacity:.8;">
+                              {{ if $e.Bool "allDay" }}all-day{{ else }}{{ $e.String "start" | parseTime "rfc3339" | formatTime "3:04pm" }}{{ end }}
+                            </div>
+                            <div class="grow" style="min-width:0;">
+                              <span class="color-highlight block text-truncate" title="{{ $e.String "name" }}">{{ $e.String "name" }}</span>
+                              {{ $loc := $e.String "location" }}
+                              {{ if $loc }}<span class="size-h6 block text-truncate" style="opacity:.5;">{{ $loc }}</span>{{ end }}
+                            </div>
+                            <span style="flex-shrink:0; color:{{ $c }}; background:{{ $c }}1f; border:1px solid {{ $c }}3d; border-radius:7px; padding:1px 7px; font-size:.72em; white-space:nowrap;">{{ $e.String "source" }}</span>
+                          </div>
+                        </li>
+                      {{ end }}
+                    </ul>
+                  </div>
+                {{ end }}
+              </div>
+              {{ end }}
+      - size: small
+        widgets:
+          - type: weather
+            location: New York, New York, United States
+            units: imperial
+            hour-format: 12h
