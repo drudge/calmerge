@@ -1,8 +1,8 @@
 services:
   calmerge:
     build: .
-    # If you'd rather build/push your own image instead of building here,
-    # replace `build: .` with e.g. image: ghcr.io/<you>/calmerge:v1
+    # To pull the published image instead of building from source, replace
+    # `build: .` with: image: ghcr.io/drudge/calmerge:latest
     container_name: calmerge
     restart: unless-stopped
     environment:

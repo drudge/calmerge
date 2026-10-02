@@ -286,8 +286,19 @@ FEEDS='[{"name":"Work","url":"http://127.0.0.1:1/"}]' AUTH_TOKEN=dev LISTEN=127.
 
 ## Deploy with Docker
 
-These steps use [Dokploy](https://dokploy.com) words (File Mount, Volume), but
-any Docker host works the same way. You have two options.
+Images for `linux/amd64` and `linux/arm64` are published to the GitHub
+container registry: `ghcr.io/drudge/calmerge:latest` follows `main`, and
+releases are tagged by version (`:1.2.3`, `:1.2`). The image is distroless and
+runs as a non-root user.
+
+```bash
+docker run -d --name calmerge -p 127.0.0.1:8076:8076 \
+  -v "$PWD/calmerge.toml:/config/calmerge.toml:ro" -v calmerge-data:/data \
+  -e AUTH_TOKEN="$AUTH_TOKEN" ghcr.io/drudge/calmerge:latest
+```
+
+The steps below use [Dokploy](https://dokploy.com) words (File Mount, Volume),
+but any Docker host works the same way. You have two options.
 
 ### A) Add calmerge to your existing Glance stack (recommended)
 

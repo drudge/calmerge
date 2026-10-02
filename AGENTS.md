@@ -118,7 +118,12 @@ and `go run .`.
 
 ## Deploying
 
-Nothing in the repo deploys itself: a push to `main` builds no image and
-restarts nothing. Whoever runs an instance redeploys it by hand (or wires up
-their own webhook), then checks the logs and the live feed
-(`get_calendar_events`, or `/events`).
+CI (`.github/workflows/ci.yml`) runs the three commands above on every push
+and pull request, then builds the Docker image. A push to `main` publishes
+`ghcr.io/drudge/calmerge:latest`; a `v1.2.3` tag publishes `:1.2.3` and
+`:1.2`. Actions in the workflow are pinned to commit SHAs; keep them that
+way when bumping versions.
+
+Publishing an image restarts nothing. Whoever runs an instance redeploys it
+by hand (or wires up their own webhook), then checks the logs and the live
+feed (`get_calendar_events`, or `/events`).
