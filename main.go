@@ -919,6 +919,52 @@ func requireTunnelAuth(cur func() *config, next http.Handler) http.Handler {
 	})
 }
 
+// statusWriter remembers the status a handler answered with. It passes
+// Flush through and unwraps, so /mcp event streams keep working.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	if w.status == 0 {
+		w.status = code
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// logFailures logs every request the API turns away (401 bad token, 404
+// expired MCP session, ...). Successful requests stay quiet. Without this a
+// client saying "the calendar wasn't available" leaves no trace here to say
+// why. Only the method, path and a few yes/no facts are logged, never
+// headers or tokens.
+func logFailures(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w}
+		next.ServeHTTP(sw, r)
+		if sw.status >= 400 {
+			log.Printf("%s %s -> %d (tunnel=%t bearer=%t mcp-session=%t)", r.Method, r.URL.Path, sw.status,
+				r.Header.Get("Cf-Connecting-Ip") != "" || r.Header.Get("Cf-Ray") != "",
+				r.Header.Get("Authorization") != "", r.Header.Get("Mcp-Session-Id") != "")
+		}
+	})
+}
+
 // parseDays interprets the ?days=N query value as a positive day count, capped
 // at the configured lookahead window. Returns ok=false for empty/invalid values
 // so the caller falls back to the full payload.
@@ -1085,7 +1131,7 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	http.Handle("/events", requireTunnelAuth(cur.Load, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/events", logFailures(requireTunnelAuth(cur.Load, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c := cur.Load()
 		resp, body, ready, updated := st.get()
 
@@ -1106,9 +1152,9 @@ func main() {
 			w.Header().Set("X-Warming", "true")
 		}
 		_, _ = w.Write(body)
-	})))
+	}))))
 
-	http.Handle("/mcp", requireTunnelAuth(cur.Load, newMCPHandler(cur.Load, st)))
+	http.Handle("/mcp", logFailures(requireTunnelAuth(cur.Load, newMCPHandler(cur.Load, st))))
 	newUIServer(cur.Load, st).routes(http.DefaultServeMux)
 
 	// No write timeout: /mcp holds event streams open. The header and idle

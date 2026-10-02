@@ -71,7 +71,8 @@ and `go run .`.
   how clients pick up new tools without restarting: a deploy drops sessions,
   clients get a 404 and re-initialize; live changes go out as
   `notifications/tools/list_changed`. `mcp_session_test.go` fails if this
-  regresses.
+  regresses. Idle sessions live a week so once-a-day agents keep theirs;
+  rejected requests are logged by `logFailures`.
 - **Writes need the bearer token, always.** Reads on `/mcp` and `/events` are
   open to internal (non-Cloudflare) traffic unless `require_auth` is on;
   `set_event_entity` checks the token itself even then. Keep any new write

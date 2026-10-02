@@ -379,7 +379,7 @@ server over Streamable HTTP. It serves from the same in-memory cache as
 `/events`, so tool calls never hit the upstream feeds.
 
 **New tools show up without restarting the client.** The server keeps
-sessions (idle ones close after an hour) and advertises `tools.listChanged`:
+sessions (idle ones close after a week) and advertises `tools.listChanged`:
 
 - A deploy restarts calmerge and drops every session. The client's next
   request gets a `404`, and the spec has it re-initialize, which re-reads the
@@ -388,6 +388,11 @@ sessions (idle ones close after an hour) and advertises `tools.listChanged`:
   `notifications/tools/list_changed`, on the session's `GET` event stream
   (2025-06-18 protocol) or a `subscriptions/listen` stream (newer, sessionless
   clients).
+
+A client has to handle that `404` by re-initializing (the spec requires it).
+One that doesn't will fail after every restart until it reconnects; rejected
+requests are logged (`POST /mcp -> 404 (... mcp-session=true)`), so that case
+is easy to spot.
 
 Stateless mode would break the first path and the older-protocol half of
 the second, so tests cover both. Whether a given client acts on the signal is

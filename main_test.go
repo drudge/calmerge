@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -850,5 +853,39 @@ func TestFeedCacheGet(t *testing.T) {
 	fc.keep(nil)
 	if _, _, ok := fc.get(f, now, at); ok {
 		t.Error("a feed dropped from the config was still remembered")
+	}
+}
+
+// TestLogFailures: a turned-away request leaves one log line saying what
+// happened, without the token; a served one leaves none.
+func TestLogFailures(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	cfg := mcpTestConfig(t)
+	h := logFailures(requireTunnelAuth(fixedConfig(cfg), newMCPHandler(fixedConfig(cfg), storeWithDays(cfg, 3))))
+
+	h.ServeHTTP(httptest.NewRecorder(), mcpInitRequest())
+	if buf.Len() != 0 {
+		t.Errorf("a served request was logged: %s", buf.String())
+	}
+
+	r := mcpInitRequest()
+	r.Header.Set("Cf-Ray", "abc123-EWR")
+	r.Header.Set("Authorization", "Bearer wrong-token")
+	h.ServeHTTP(httptest.NewRecorder(), r)
+	if got := buf.String(); !strings.Contains(got, "POST /mcp -> 401 (tunnel=true bearer=true mcp-session=false)") || strings.Contains(got, "wrong-token") {
+		t.Errorf("401 log = %q", got)
+	}
+
+	// A session the server no longer has (idle too long, or dropped by a
+	// restart) is the 404 a client has to reconnect on.
+	buf.Reset()
+	r = mcpInitRequest()
+	r.Header.Set("Mcp-Session-Id", "gone")
+	h.ServeHTTP(httptest.NewRecorder(), r)
+	if got := buf.String(); !strings.Contains(got, "POST /mcp -> 404 (tunnel=false bearer=false mcp-session=true)") {
+		t.Errorf("404 log = %q", got)
 	}
 }

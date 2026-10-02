@@ -49,8 +49,12 @@ type mcpEvents struct {
 }
 
 // mcpSessionTimeout closes sessions idle this long. A client that comes back
-// later gets a 404 and, per the spec, starts a fresh session.
-const mcpSessionTimeout = time.Hour
+// later gets a 404 and, per the spec, starts a fresh session. Not every
+// client does: an always-on agent that calls once a day would find its
+// session gone each morning and report the calendar as unavailable. A week
+// covers daily and weekday-only callers; an idle session costs next to
+// nothing to keep.
+const mcpSessionTimeout = 7 * 24 * time.Hour
 
 // newMCPHandler serves calmerge's MCP server over Streamable HTTP.
 func newMCPHandler(cur func() *config, st *store) http.Handler {
