@@ -378,6 +378,76 @@ func TestFetchFeedAllDaySpan(t *testing.T) {
 	}
 }
 
+func TestFetchFeedSkipsCancelled(t *testing.T) {
+	const ics = "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"PRODID:-//test//test//EN\r\n" +
+		// A daily Google series with one occurrence cancelled by its organizer.
+		"BEGIN:VEVENT\r\n" +
+		"UID:standup@example.com\r\n" +
+		"DTSTAMP:20261001T120000Z\r\n" +
+		"SUMMARY:Ops standup\r\n" +
+		"DTSTART;TZID=America/New_York:20261005T083000\r\n" +
+		"DTEND;TZID=America/New_York:20261005T090000\r\n" +
+		"RRULE:FREQ=DAILY;COUNT=3\r\n" +
+		"STATUS:CONFIRMED\r\n" +
+		"END:VEVENT\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"UID:standup@example.com\r\n" +
+		"DTSTAMP:20261004T120000Z\r\n" +
+		"RECURRENCE-ID;TZID=America/New_York:20261006T083000\r\n" +
+		"SUMMARY:Ops standup\r\n" +
+		"DTSTART;TZID=America/New_York:20261006T083000\r\n" +
+		"DTEND;TZID=America/New_York:20261006T090000\r\n" +
+		"STATUS:CANCELLED\r\n" +
+		"SEQUENCE:1\r\n" +
+		"END:VEVENT\r\n" +
+		// A one-off meeting cancelled outright.
+		"BEGIN:VEVENT\r\n" +
+		"UID:review@example.com\r\n" +
+		"DTSTAMP:20261001T120000Z\r\n" +
+		"SUMMARY:Budget review\r\n" +
+		"DTSTART;TZID=America/New_York:20261005T140000\r\n" +
+		"DTEND;TZID=America/New_York:20261005T150000\r\n" +
+		"STATUS:CANCELLED\r\n" +
+		"END:VEVENT\r\n" +
+		// Outlook's leftover copy: no STATUS, just the subject prefix.
+		"BEGIN:VEVENT\r\n" +
+		"UID:sync@example.com\r\n" +
+		"DTSTAMP:20261001T120000Z\r\n" +
+		"SUMMARY:Canceled: Vendor sync\r\n" +
+		"DTSTART;TZID=Eastern Standard Time:20261005T160000\r\n" +
+		"DTEND;TZID=Eastern Standard Time:20261005T163000\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/calendar")
+		_, _ = w.Write([]byte(ics))
+	}))
+	defer srv.Close()
+
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 10, 5, 0, 0, 0, 0, ny)
+	end := start.AddDate(0, 0, 7)
+
+	evs, err := fetchFeed(srv.Client(), Feed{Name: "Work", URL: srv.URL}, start, end, ny, start, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range evs {
+		got = append(got, e.Name+" "+e.Date)
+	}
+	want := []string{"Ops standup 2026-10-05", "Ops standup 2026-10-07"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("events = %q, want %q", got, want)
+	}
+}
+
 func TestCivilDays(t *testing.T) {
 	ny, err := time.LoadLocation("America/New_York")
 	if err != nil {

@@ -1363,6 +1363,19 @@ func build(cfg config, cl *http.Client, fc *feedCache) Response {
 // at most; the cap keeps a broken or hostile URL from filling memory.
 const maxFeedBytes = 32 << 20
 
+// isCancelled reports whether a feed still carries a meeting that was called
+// off. Cancelled meetings aren't deleted from the attendee's calendar: Google
+// sends STATUS:CANCELLED (on the whole event, or on one RECURRENCE-ID override
+// that gocal swaps in for that occurrence), and Outlook keeps the item until
+// someone clicks "Remove from calendar", titled "Canceled: <subject>".
+func isCancelled(e gocal.Event) bool {
+	if strings.EqualFold(strings.TrimSpace(e.Status), "CANCELLED") {
+		return true
+	}
+	title := strings.ToLower(strings.TrimSpace(e.Summary))
+	return strings.HasPrefix(title, "canceled:") || strings.HasPrefix(title, "cancelled:")
+}
+
 // hideURL drops the URL that net/http and net/url put in their errors. Feed
 // URLs are secrets (the address is the password), and fetch errors are served
 // in the errors list of /events and /mcp, so only the cause may pass through.
@@ -1411,7 +1424,7 @@ func fetchFeed(cl *http.Client, f Feed, start, end time.Time, loc *time.Location
 
 	out := make([]Event, 0, len(p.Events))
 	for _, e := range p.Events {
-		if e.Start == nil {
+		if e.Start == nil || isCancelled(e) {
 			continue
 		}
 		allDay := strings.EqualFold(e.RawStart.Params["VALUE"], "DATE")
