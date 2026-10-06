@@ -568,6 +568,53 @@ func TestFetchFeedRSVP(t *testing.T) {
 	}
 }
 
+// TestFetchFeedExdateList checks that occurrences Outlook removed from a
+// series (declined or deleted) stay gone. Outlook lists them in one
+// comma-separated EXDATE, folded across lines.
+func TestFetchFeedExdateList(t *testing.T) {
+	const ics = "BEGIN:VCALENDAR\r\n" +
+		"VERSION:2.0\r\n" +
+		"PRODID:Microsoft Exchange Server 2010\r\n" +
+		"BEGIN:VEVENT\r\n" +
+		"RRULE:FREQ=WEEKLY;UNTIL=20261127T143000Z;INTERVAL=1;BYDAY=MO,WE,FR;WKST=SU\r\n" +
+		"EXDATE;TZID=Eastern Standard Time:20260803T093000,20260907T093000,20260909T\r\n" +
+		" 093000,20261007T093000,20261009T093000\r\n" +
+		"UID:040000008200E00074C5B7101A82E00800000000AABBCCDDEEFF@example.com\r\n" +
+		"SUMMARY:Acme POS\\, Stand up\r\n" +
+		"DTSTART;TZID=Eastern Standard Time:20260724T093000\r\n" +
+		"DTEND;TZID=Eastern Standard Time:20260724T094500\r\n" +
+		"DTSTAMP:20261006T213748Z\r\n" +
+		"TRANSP:OPAQUE\r\n" +
+		"STATUS:CONFIRMED\r\n" +
+		"X-MICROSOFT-CDO-BUSYSTATUS:BUSY\r\n" +
+		"END:VEVENT\r\n" +
+		"END:VCALENDAR\r\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/calendar")
+		_, _ = w.Write([]byte(ics))
+	}))
+	defer srv.Close()
+
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 10, 5, 0, 0, 0, 0, ny)
+	evs, err := fetchFeed(srv.Client(), Feed{Name: "Work", URL: srv.URL}, start, start.AddDate(0, 0, 8), ny, start, feedOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range evs {
+		got = append(got, e.Start)
+	}
+	want := []string{"2026-10-05T09:30:00-04:00", "2026-10-12T09:30:00-04:00"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("starts = %q, want %q", got, want)
+	}
+}
+
 func TestCivilDays(t *testing.T) {
 	ny, err := time.LoadLocation("America/New_York")
 	if err != nil {

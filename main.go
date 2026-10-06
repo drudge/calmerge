@@ -1430,6 +1430,32 @@ var transpRE = regexp.MustCompile(`(?im)^TRANSP([;:])`)
 
 const transpKey = "X-CALMERGE-TRANSP"
 
+// exdateRE matches an EXDATE property, folded continuation lines included.
+var exdateRE = regexp.MustCompile(`(?im)^EXDATE((?:[^:\r\n]|\r?\n[ \t])*):((?:[^\r\n]|\r?\n[ \t])*)`)
+
+// foldRE matches a line fold: a line break followed by one space or tab.
+var foldRE = regexp.MustCompile(`\r?\n[ \t]`)
+
+// splitExdates rewrites each EXDATE that lists several dates into one EXDATE
+// per date. Outlook removes an occurrence you decline (or delete) from a
+// series by adding it to a comma-separated EXDATE list, but gocal parses the
+// whole list as one date, fails, and silently drops it, so every removed
+// occurrence came back.
+func splitExdates(ics string) string {
+	return exdateRE.ReplaceAllStringFunc(ics, func(m string) string {
+		sub := exdateRE.FindStringSubmatch(m)
+		params := foldRE.ReplaceAllString(sub[1], "")
+		vals := strings.Split(foldRE.ReplaceAllString(sub[2], ""), ",")
+		lines := make([]string, 0, len(vals))
+		for _, v := range vals {
+			if v = strings.TrimSpace(v); v != "" {
+				lines = append(lines, "EXDATE"+params+":"+v)
+			}
+		}
+		return strings.Join(lines, "\r\n")
+	})
+}
+
 // myResponse is the calendar owner's RSVP: the PARTSTAT of the first
 // structured attendee whose address is in self. Only structured ATTENDEE
 // lines carry PARTSTAT, so the DESCRIPTION roster can't answer this.
@@ -1471,7 +1497,7 @@ func fetchFeed(cl *http.Client, f Feed, start, end time.Time, loc *time.Location
 	// Microsoft/O365 feeds use Windows zone names (e.g. "Eastern Standard Time")
 	// that gocal can't resolve, so it silently falls back to UTC and the times
 	// come out hours off. Rewrite known Windows TZIDs to IANA names first.
-	ics := transpRE.ReplaceAllString(remapWindowsTZ(string(raw)), transpKey+"$1")
+	ics := transpRE.ReplaceAllString(remapWindowsTZ(splitExdates(string(raw))), transpKey+"$1")
 	p := gocal.NewParser(strings.NewReader(ics))
 	p.Start, p.End = &start, &end
 	if err := p.Parse(); err != nil {

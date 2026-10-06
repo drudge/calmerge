@@ -100,7 +100,7 @@ Optional per-event fields (all `omitempty`, so absent when empty/disabled):
 | `multiDay`/`spanDays` | all-day events | `spanDays > 1` and the inclusive day count of the span. |
 | `dayIndex` | all-day events | 1-based position of this instance within the true span (day 2 of 5). |
 | `status` | feed has it | `STATUS` lowercased: `confirmed` or `tentative`. Cancelled meetings are left out entirely. |
-| `showAs` | Outlook feeds | `X-MICROSOFT-CDO-BUSYSTATUS` lowercased: `free`/`tentative`/`busy`/`oof`/`workingelsewhere`. A meeting you declined but kept on your calendar shows as `free`. |
+| `showAs` | Outlook feeds | `X-MICROSOFT-CDO-BUSYSTATUS` lowercased: `free`/`tentative`/`busy`/`oof`/`workingelsewhere`. |
 | `transparent` | `TRANSP:TRANSPARENT` | `true` when the event doesn't block time (marked free, or declined and kept). |
 | `myResponse` | `self_emails` set | Your own RSVP (`accepted`/`declined`/`tentative`/`needs-action`), from the `ATTENDEE` matching one of your addresses. Only feeds that keep `ATTENDEE` (Google, iCloud) have it; published Outlook feeds don't. |
 | `categories` | feed has them | Raw ICS `CATEGORIES` (Outlook's manual categories). |
