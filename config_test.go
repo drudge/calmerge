@@ -18,6 +18,7 @@ tz = "America/Chicago"
 lookahead_days = 14
 refresh_minutes = 5
 include_agenda = false
+self_emails = ["Me@Example.com", " mailto:me@personal.example "]
 
 [[feeds]]
 name = "Work"
@@ -45,7 +46,7 @@ func isolateEnv(t *testing.T) string {
 	t.Helper()
 	for _, k := range []string{"FEEDS", "ENTITIES", "TZ_NAME", "LOOKAHEAD_DAYS", "LOOKBACK_DAYS",
 		"CACHE_TTL_MIN", "HTTP_TIMEOUT_SEC", "INCLUDE_ATTENDEES", "INCLUDE_AGENDA", "AUTH_TOKEN", "LISTEN",
-		"LESSONS_MAX_AGE_DAYS", "CONFIG_FILE"} {
+		"LESSONS_MAX_AGE_DAYS", "CONFIG_FILE", "REQUIRE_AUTH", "SELF_EMAILS", "SKIP_DECLINED"} {
 		t.Setenv(k, "")
 	}
 	dir := t.TempDir()
@@ -77,6 +78,9 @@ func TestLoadConfigFromTOML(t *testing.T) {
 	}
 	if c.cacheTTL != 5*time.Minute || c.includeAgenda || !c.includeAttendees {
 		t.Errorf("ttl=%s agenda=%v attendees=%v", c.cacheTTL, c.includeAgenda, c.includeAttendees)
+	}
+	if want := []string{"me@example.com", "me@personal.example"}; !reflect.DeepEqual(c.selfEmails, want) {
+		t.Errorf("selfEmails = %q, want %q", c.selfEmails, want)
 	}
 	if len(c.feeds) != 2 || c.feeds[0].Color != "#5aa2f0" || c.feeds[1].Color != "#cf7fd1" {
 		t.Errorf("feeds = %+v", c.feeds)
@@ -208,6 +212,8 @@ func TestPrintConfigRoundTrip(t *testing.T) {
 		`FEEDS=[{"name":"Work","url":"https://example.com/p.ics?a=1&b=2"},{"name":"Family","url":"https://example.com/f.ics","color":"cf7fd1","user":"me","pass":"pw"}]`,
 		`ENTITIES=[{"name":"Acme \"Rocket\" Co","parent":"Northwind Holdings","keywords":["ARC","Acme Rocket Co"],"domains":["acmerocket.example"]},{"name":"Personal","feeds":["Family"]}]`,
 		"LOOKBACK_DAYS=1",
+		"SELF_EMAILS=me@example.com, Me@Personal.example",
+		"SKIP_DECLINED=true",
 		"INCLUDE_AGENDA='false'",
 		"export LESSONS_MAX_AGE_DAYS=0",
 		"AUTH_TOKEN=supersecret",
@@ -242,6 +248,9 @@ func TestPrintConfigRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(fromFile.classifier.Entities(), fromEnv.classifier.Entities()) {
 		t.Errorf("entities differ")
+	}
+	if want := []string{"me@example.com", "me@personal.example"}; !reflect.DeepEqual(fromFile.selfEmails, want) || !fromFile.skipDeclined {
+		t.Errorf("selfEmails=%q skipDeclined=%v", fromFile.selfEmails, fromFile.skipDeclined)
 	}
 	if fromFile.lookbackDays != 1 || fromFile.includeAgenda || fromFile.classifier.memory.maxAge != 0 {
 		t.Errorf("lookback=%d agenda=%v maxAge=%d", fromFile.lookbackDays, fromFile.includeAgenda, fromFile.classifier.memory.maxAge)

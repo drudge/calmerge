@@ -99,6 +99,10 @@ Optional per-event fields (all `omitempty`, so absent when empty/disabled):
 | `startDate`/`endDate` | all-day events | True **inclusive** span as `YYYY-MM-DD`, never clipped to the fetch window; identical on every per-day instance. |
 | `multiDay`/`spanDays` | all-day events | `spanDays > 1` and the inclusive day count of the span. |
 | `dayIndex` | all-day events | 1-based position of this instance within the true span (day 2 of 5). |
+| `status` | feed has it | `STATUS` lowercased: `confirmed` or `tentative`. Cancelled meetings are left out entirely. |
+| `showAs` | Outlook feeds | `X-MICROSOFT-CDO-BUSYSTATUS` lowercased: `free`/`tentative`/`busy`/`oof`/`workingelsewhere`. |
+| `transparent` | `TRANSP:TRANSPARENT` | `true` when the event doesn't block time (marked free, or declined and kept). |
+| `myResponse` | `self_emails` set | Your own RSVP (`accepted`/`declined`/`tentative`/`needs-action`), from the `ATTENDEE` matching one of your addresses. Only feeds that keep `ATTENDEE` (Google, iCloud) have it; published Outlook feeds don't. |
 | `categories` | feed has them | Raw ICS `CATEGORIES` (Outlook's manual categories). |
 | `entity` / `entityColor` / `entityVia` | entities configured | Business/client the event is for, see [Entity tagging](#entity-tagging). |
 
@@ -131,6 +135,8 @@ which has every key, comments, and a sample entity list.
 | `include_attendees` | `INCLUDE_ATTENDEES` | `true` | Include the per-event `attendees` list and `organizer`. Set `false` to trim the payload. |
 | `include_agenda` | `INCLUDE_AGENDA` | `true` | Include the per-event cleaned `agenda` (DESCRIPTION minus conferencing boilerplate). Set `false` to trim the payload. |
 | `require_auth` | `REQUIRE_AUTH` | `false` | Require the bearer token on every `/events` and `/mcp` request, not just tunnel traffic. Turn it on whenever something other than a Cloudflare tunnel can reach the port. |
+| `self_emails` | `SELF_EMAILS` | (none) | Your own addresses, so each event's `myResponse` can carry your RSVP. Env takes a comma-separated list. |
+| `skip_declined` | `SKIP_DECLINED` | `false` | Leave out meetings whose `myResponse` is `declined`. Needs `self_emails`. |
 | `[[entities]]` | `ENTITIES` | (none) | Businesses/clients to tag events with; env takes a JSON array. None = tagging off. See [Entity tagging](#entity-tagging). |
 | `corrections_file` | `CORRECTIONS_FILE` | `/data/corrections.json` | Where entity corrections are saved. |
 | `lessons_file` | `LESSONS_FILE` | `/data/lessons.json` | The classifier's long-term memory. |

@@ -63,6 +63,15 @@ type Event struct {
 	Attendees []Attendee `json:"attendees,omitempty"`
 	Agenda    string     `json:"agenda,omitempty"` // cleaned DESCRIPTION text
 
+	// Busy state and RSVP, so readers can leave out meetings you aren't going
+	// to. Published Outlook feeds strip ATTENDEE, so there showAs and
+	// transparent are the only signals; myResponse needs self_emails and a
+	// feed that keeps ATTENDEE (Google, iCloud).
+	Status      string `json:"status,omitempty"`      // confirmed | tentative (STATUS; cancelled events are skipped)
+	ShowAs      string `json:"showAs,omitempty"`      // free | tentative | busy | oof | workingelsewhere (Outlook)
+	Transparent bool   `json:"transparent,omitempty"` // TRANSP:TRANSPARENT: doesn't block time
+	MyResponse  string `json:"myResponse,omitempty"`  // accepted | declined | tentative | needs-action
+
 	// Span / grouping. seriesId is set on every event; the rest only on all-day
 	// instances (where one source event expands to one entry per day).
 	SeriesId  string `json:"seriesId,omitempty"`  // stable id shared by all instances of one source event
@@ -113,6 +122,9 @@ type config struct {
 	includeAttendees bool
 	includeAgenda    bool
 	requireAuth      bool // token on every /events and /mcp request, not just tunnel traffic
+
+	selfEmails   []string // lowercased addresses that are "me", for myResponse
+	skipDeclined bool     // drop events whose myResponse is declined
 
 	classifier *classifier // nil when ENTITIES is unset
 }
@@ -1312,10 +1324,10 @@ func build(cfg config, cl *http.Client, fc *feedCache) Response {
 		wg.Add(1)
 		go func(i int, f Feed) {
 			defer wg.Done()
-			evs, err := fetchFeed(cl, f, start, end, cfg.loc, now, cfg.includeAttendees, cfg.includeAgenda)
+			evs, err := fetchFeed(cl, f, start, end, cfg.loc, now, cfg.feedOptions())
 			if err != nil {
 				time.Sleep(feedRetryDelay)
-				evs, err = fetchFeed(cl, f, start, end, cfg.loc, now, cfg.includeAttendees, cfg.includeAgenda)
+				evs, err = fetchFeed(cl, f, start, end, cfg.loc, now, cfg.feedOptions())
 			}
 			if err == nil {
 				fc.put(f, evs, now)
@@ -1387,7 +1399,76 @@ func hideURL(err error) error {
 	return err
 }
 
-func fetchFeed(cl *http.Client, f Feed, start, end time.Time, loc *time.Location, now time.Time, includeAttendees, includeAgenda bool) ([]Event, error) {
+// feedOptions are the config settings that shape how a feed is parsed.
+type feedOptions struct {
+	includeAttendees bool
+	includeAgenda    bool
+	self             map[string]bool // lowercased addresses that are "me"
+	skipDeclined     bool
+}
+
+// feedOptions collects the parse settings from c.
+func (c config) feedOptions() feedOptions {
+	o := feedOptions{
+		includeAttendees: c.includeAttendees,
+		includeAgenda:    c.includeAgenda,
+		skipDeclined:     c.skipDeclined,
+	}
+	if len(c.selfEmails) > 0 {
+		o.self = make(map[string]bool, len(c.selfEmails))
+		for _, e := range c.selfEmails {
+			o.self[e] = true
+		}
+	}
+	return o
+}
+
+// transpRE finds TRANSP property lines. gocal drops the standard properties it
+// doesn't model, TRANSP among them, but keeps every X- property, so TRANSP is
+// renamed to transpKey before parsing.
+var transpRE = regexp.MustCompile(`(?im)^TRANSP([;:])`)
+
+const transpKey = "X-CALMERGE-TRANSP"
+
+// exdateRE matches an EXDATE property, folded continuation lines included.
+var exdateRE = regexp.MustCompile(`(?im)^EXDATE((?:[^:\r\n]|\r?\n[ \t])*):((?:[^\r\n]|\r?\n[ \t])*)`)
+
+// foldRE matches a line fold: a line break followed by one space or tab.
+var foldRE = regexp.MustCompile(`\r?\n[ \t]`)
+
+// splitExdates rewrites each EXDATE that lists several dates into one EXDATE
+// per date. Outlook removes an occurrence you decline (or delete) from a
+// series by adding it to a comma-separated EXDATE list, but gocal parses the
+// whole list as one date, fails, and silently drops it, so every removed
+// occurrence came back.
+func splitExdates(ics string) string {
+	return exdateRE.ReplaceAllStringFunc(ics, func(m string) string {
+		sub := exdateRE.FindStringSubmatch(m)
+		params := foldRE.ReplaceAllString(sub[1], "")
+		vals := strings.Split(foldRE.ReplaceAllString(sub[2], ""), ",")
+		lines := make([]string, 0, len(vals))
+		for _, v := range vals {
+			if v = strings.TrimSpace(v); v != "" {
+				lines = append(lines, "EXDATE"+params+":"+v)
+			}
+		}
+		return strings.Join(lines, "\r\n")
+	})
+}
+
+// myResponse is the calendar owner's RSVP: the PARTSTAT of the first
+// structured attendee whose address is in self. Only structured ATTENDEE
+// lines carry PARTSTAT, so the DESCRIPTION roster can't answer this.
+func myResponse(atts []Attendee, self map[string]bool) string {
+	for _, a := range atts {
+		if a.Email != "" && self[strings.ToLower(a.Email)] {
+			return a.Status
+		}
+	}
+	return ""
+}
+
+func fetchFeed(cl *http.Client, f Feed, start, end time.Time, loc *time.Location, now time.Time, opt feedOptions) ([]Event, error) {
 	req, err := http.NewRequest(http.MethodGet, f.URL, nil)
 	if err != nil {
 		return nil, hideURL(err)
@@ -1416,7 +1497,8 @@ func fetchFeed(cl *http.Client, f Feed, start, end time.Time, loc *time.Location
 	// Microsoft/O365 feeds use Windows zone names (e.g. "Eastern Standard Time")
 	// that gocal can't resolve, so it silently falls back to UTC and the times
 	// come out hours off. Rewrite known Windows TZIDs to IANA names first.
-	p := gocal.NewParser(strings.NewReader(remapWindowsTZ(string(raw))))
+	ics := transpRE.ReplaceAllString(remapWindowsTZ(splitExdates(string(raw))), transpKey+"$1")
+	p := gocal.NewParser(strings.NewReader(ics))
 	p.Start, p.End = &start, &end
 	if err := p.Parse(); err != nil {
 		return nil, err
@@ -1465,18 +1547,27 @@ func fetchFeed(cl *http.Client, f Feed, start, end time.Time, loc *time.Location
 		// Google "Guests" roster in the DESCRIPTION (name + role, common on
 		// published Outlook feeds that strip ATTENDEE) fills gaps and adds
 		// anyone missing, without clobbering the structured data.
+		structured := parseAttendees(e.Attendees)
+		base.MyResponse = myResponse(structured, opt.self)
+		if opt.skipDeclined && base.MyResponse == "declined" {
+			continue
+		}
+		base.Status = strings.ToLower(strings.TrimSpace(e.Status))
+		base.ShowAs = strings.ToLower(strings.TrimSpace(e.CustomAttributes["X-MICROSOFT-CDO-BUSYSTATUS"]))
+		base.Transparent = strings.EqualFold(strings.TrimSpace(e.CustomAttributes[transpKey]), "TRANSPARENT")
+
 		descOrg, guests := parseDescriptionGuests(e.Description)
-		attendees := mergeAttendees(parseAttendees(e.Attendees), guests)
+		attendees := mergeAttendees(structured, guests)
 		organizer := organizerName(e.Organizer)
 		if organizer == "" {
 			organizer = descOrg
 		}
 		agenda := stripTitleEcho(cleanDescription(e.Description), base.Name)
-		if includeAttendees {
+		if opt.includeAttendees {
 			base.Attendees = attendees
 			base.Organizer = organizer
 		}
-		if includeAgenda {
+		if opt.includeAgenda {
 			base.Agenda = agenda
 		}
 		// The classifier sees everything, even fields trimmed from the payload.
