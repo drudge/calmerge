@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -344,7 +345,7 @@ func TestFetchFeedAllDaySpan(t *testing.T) {
 	start := time.Date(2026, 6, 17, 0, 0, 0, 0, ny)
 	end := start.AddDate(0, 0, 30)
 
-	evs, err := fetchFeed(srv.Client(), Feed{Name: "Fam", URL: srv.URL, Color: "#fff"}, start, end, ny, now, true, true)
+	evs, err := fetchFeed(srv.Client(), Feed{Name: "Fam", URL: srv.URL, Color: "#fff"}, start, end, ny, now, feedOptions{includeAttendees: true, includeAgenda: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +435,7 @@ func TestFetchFeedSkipsCancelled(t *testing.T) {
 	start := time.Date(2026, 10, 5, 0, 0, 0, 0, ny)
 	end := start.AddDate(0, 0, 7)
 
-	evs, err := fetchFeed(srv.Client(), Feed{Name: "Work", URL: srv.URL}, start, end, ny, start, false, false)
+	evs, err := fetchFeed(srv.Client(), Feed{Name: "Work", URL: srv.URL}, start, end, ny, start, feedOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,6 +446,125 @@ func TestFetchFeedSkipsCancelled(t *testing.T) {
 	want := []string{"Ops standup 2026-10-05", "Ops standup 2026-10-07"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("events = %q, want %q", got, want)
+	}
+}
+
+// rsvpICS has the busy/RSVP signals each kind of feed actually carries: a
+// published Outlook feed (no ATTENDEE, only TRANSP and the CDO busy status)
+// and Google invites (ATTENDEE with PARTSTAT, mine among them).
+const rsvpICS = "BEGIN:VCALENDAR\r\n" +
+	"VERSION:2.0\r\n" +
+	"PRODID:Microsoft Exchange Server 2010\r\n" +
+	"BEGIN:VEVENT\r\n" +
+	"UID:040000008200E00074C5B7101A82E00800000000A1B2C3D4E5F6@example.com\r\n" +
+	"SUMMARY:Quarterly planning\r\n" +
+	"DTSTART;TZID=Eastern Standard Time:20261005T100000\r\n" +
+	"DTEND;TZID=Eastern Standard Time:20261005T110000\r\n" +
+	"CLASS:PUBLIC\r\n" +
+	"PRIORITY:5\r\n" +
+	"DTSTAMP:20261001T120000Z\r\n" +
+	"TRANSP:TRANSPARENT\r\n" +
+	"STATUS:CONFIRMED\r\n" +
+	"SEQUENCE:0\r\n" +
+	"X-MICROSOFT-CDO-APPT-SEQUENCE:0\r\n" +
+	"X-MICROSOFT-CDO-BUSYSTATUS:FREE\r\n" +
+	"X-MICROSOFT-CDO-INTENDEDSTATUS:BUSY\r\n" +
+	"X-MICROSOFT-CDO-ALLDAYEVENT:FALSE\r\n" +
+	"END:VEVENT\r\n" +
+	"BEGIN:VEVENT\r\n" +
+	"UID:040000008200E00074C5B7101A82E00800000000F6E5D4C3B2A1@example.com\r\n" +
+	"SUMMARY:Vendor sync\r\n" +
+	"DTSTART;TZID=Eastern Standard Time:20261005T130000\r\n" +
+	"DTEND;TZID=Eastern Standard Time:20261005T133000\r\n" +
+	"DTSTAMP:20261001T120000Z\r\n" +
+	"TRANSP:OPAQUE\r\n" +
+	"STATUS:CONFIRMED\r\n" +
+	"X-MICROSOFT-CDO-BUSYSTATUS:BUSY\r\n" +
+	"X-MICROSOFT-CDO-INTENDEDSTATUS:BUSY\r\n" +
+	"END:VEVENT\r\n" +
+	"BEGIN:VEVENT\r\n" +
+	"DTSTART:20261005T190000Z\r\n" +
+	"DTEND:20261005T193000Z\r\n" +
+	"DTSTAMP:20261001T120000Z\r\n" +
+	"ORGANIZER;CN=Jordan Lee:mailto:jordan@acme.example\r\n" +
+	"UID:4kq2v8n1m0example@google.com\r\n" +
+	"ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Jordan\r\n" +
+	" Lee;X-NUM-GUESTS=0:mailto:jordan@acme.example\r\n" +
+	"ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=DECLINED;CN=me@ex\r\n" +
+	" ample.com;X-NUM-GUESTS=0:mailto:Me@Example.com\r\n" +
+	"SEQUENCE:0\r\n" +
+	"STATUS:CONFIRMED\r\n" +
+	"SUMMARY:Acme intro\r\n" +
+	"TRANSP:OPAQUE\r\n" +
+	"END:VEVENT\r\n" +
+	"BEGIN:VEVENT\r\n" +
+	"DTSTART:20261005T200000Z\r\n" +
+	"DTEND:20261005T203000Z\r\n" +
+	"DTSTAMP:20261001T120000Z\r\n" +
+	"UID:7hd03kq9example@google.com\r\n" +
+	"ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=TENTATIVE;CN=me@ex\r\n" +
+	" ample.com;X-NUM-GUESTS=0:mailto:me@example.com\r\n" +
+	"STATUS:TENTATIVE\r\n" +
+	"SUMMARY:Design review\r\n" +
+	"END:VEVENT\r\n" +
+	"END:VCALENDAR\r\n"
+
+func TestFetchFeedRSVP(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/calendar")
+		_, _ = w.Write([]byte(rsvpICS))
+	}))
+	defer srv.Close()
+
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 10, 5, 0, 0, 0, 0, ny)
+	end := start.AddDate(0, 0, 7)
+	self := map[string]bool{"me@example.com": true}
+
+	// summary is name/status/showAs/transparent/myResponse per event.
+	summary := func(evs []Event) []string {
+		var out []string
+		for _, e := range evs {
+			out = append(out, fmt.Sprintf("%s/%s/%s/%t/%s", e.Name, e.Status, e.ShowAs, e.Transparent, e.MyResponse))
+		}
+		return out
+	}
+	tests := []struct {
+		name string
+		opt  feedOptions
+		want []string
+	}{
+		{"no self emails", feedOptions{}, []string{
+			"Quarterly planning/confirmed/free/true/",
+			"Vendor sync/confirmed/busy/false/",
+			"Acme intro/confirmed//false/",
+			"Design review/tentative//false/",
+		}},
+		{"self emails", feedOptions{self: self}, []string{
+			"Quarterly planning/confirmed/free/true/",
+			"Vendor sync/confirmed/busy/false/",
+			"Acme intro/confirmed//false/declined",
+			"Design review/tentative//false/tentative",
+		}},
+		{"skip declined", feedOptions{self: self, skipDeclined: true}, []string{
+			"Quarterly planning/confirmed/free/true/",
+			"Vendor sync/confirmed/busy/false/",
+			"Design review/tentative//false/tentative",
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			evs, err := fetchFeed(srv.Client(), Feed{Name: "Work", URL: srv.URL}, start, end, ny, start, tt.opt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := summary(evs); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("events =\n %q\nwant\n %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -790,7 +910,7 @@ func TestFetchFeedErrorsHideURL(t *testing.T) {
 	srv.Close() // nothing listens any more: the fetch fails to connect
 	now := time.Now()
 	for _, u := range []string{secret, "https://example.com/s3cr3t-token/\x7f.ics"} {
-		_, err := fetchFeed(&http.Client{Timeout: 2 * time.Second}, Feed{Name: "Work", URL: u}, now, now.AddDate(0, 0, 7), time.UTC, now, true, true)
+		_, err := fetchFeed(&http.Client{Timeout: 2 * time.Second}, Feed{Name: "Work", URL: u}, now, now.AddDate(0, 0, 7), time.UTC, now, feedOptions{includeAttendees: true, includeAgenda: true})
 		if err == nil {
 			t.Fatalf("fetchFeed(%q) succeeded, want an error", u)
 		}
@@ -813,7 +933,7 @@ func TestFetchFeedSizeCap(t *testing.T) {
 	}))
 	defer srv.Close()
 	now := time.Now()
-	_, err := fetchFeed(srv.Client(), Feed{Name: "Work", URL: srv.URL}, now, now.AddDate(0, 0, 7), time.UTC, now, true, true)
+	_, err := fetchFeed(srv.Client(), Feed{Name: "Work", URL: srv.URL}, now, now.AddDate(0, 0, 7), time.UTC, now, feedOptions{includeAttendees: true, includeAgenda: true})
 	if err == nil || !strings.Contains(err.Error(), "larger than") {
 		t.Errorf("err = %v, want a size-cap error", err)
 	}

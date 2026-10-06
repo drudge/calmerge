@@ -255,7 +255,7 @@ func fetchICS(t *testing.T, ics string) []Event {
 	}))
 	defer srv.Close()
 	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	evs, err := fetchFeed(srv.Client(), Feed{Name: "Work", URL: srv.URL}, start, start.AddDate(0, 0, 7), time.UTC, start, false, false)
+	evs, err := fetchFeed(srv.Client(), Feed{Name: "Work", URL: srv.URL}, start, start.AddDate(0, 0, 7), time.UTC, start, feedOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

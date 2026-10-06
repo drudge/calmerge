@@ -16,6 +16,13 @@ http_timeout_seconds = 20 # [HTTP_TIMEOUT_SEC] per-feed fetch timeout
 include_attendees = true  # [INCLUDE_ATTENDEES]
 include_agenda = true     # [INCLUDE_AGENDA]
 
+# Your own addresses (any feed, any case). With these set, each event carries
+# myResponse, your RSVP, when the feed keeps ATTENDEE lines (Google, iCloud;
+# published Outlook feeds don't). skip_declined then leaves out meetings you
+# declined. Env: SELF_EMAILS takes a comma-separated list.
+# self_emails = ["me@example.com"] # [SELF_EMAILS]
+skip_declined = false              # [SKIP_DECLINED]
+
 # By default only Cloudflare-tunnel traffic needs the AUTH_TOKEN bearer token;
 # anything else that reaches the port reads /events and /mcp freely. Set this
 # to true to require the token on every request (Glance then needs the header

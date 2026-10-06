@@ -31,6 +31,8 @@ type fileConfig struct {
 	IncludeAttendees   bool     `toml:"include_attendees"`
 	IncludeAgenda      bool     `toml:"include_agenda"`
 	RequireAuth        bool     `toml:"require_auth"`
+	SelfEmails         []string `toml:"self_emails"`
+	SkipDeclined       bool     `toml:"skip_declined"`
 	CorrectionsFile    string   `toml:"corrections_file"`
 	LessonsFile        string   `toml:"lessons_file"`
 	LessonsMaxAgeDays  int      `toml:"lessons_max_age_days"`
@@ -129,6 +131,12 @@ func loadConfig(path string, prev *config) (config, error) {
 	c.includeAttendees = flag("include_attendees", fc.IncludeAttendees, "INCLUDE_ATTENDEES", true)
 	c.includeAgenda = flag("include_agenda", fc.IncludeAgenda, "INCLUDE_AGENDA", true)
 	c.requireAuth = flag("require_auth", fc.RequireAuth, "REQUIRE_AUTH", false)
+	if inFile("self_emails") {
+		c.selfEmails = normalizeEmails(fc.SelfEmails)
+	} else {
+		c.selfEmails = normalizeEmails(strings.Split(os.Getenv("SELF_EMAILS"), ","))
+	}
+	c.skipDeclined = flag("skip_declined", fc.SkipDeclined, "SKIP_DECLINED", false)
 	if c.cacheTTL < time.Minute {
 		return c, fmt.Errorf("refresh interval must be at least 1 minute")
 	}
@@ -172,6 +180,19 @@ func loadConfig(path string, prev *config) (config, error) {
 		return c, err
 	}
 	return c, nil
+}
+
+// normalizeEmails trims, lowercases and drops a mailto: prefix from each
+// address so they match attendee emails as written in any feed. Blanks are
+// dropped; nil when nothing is left.
+func normalizeEmails(in []string) []string {
+	var out []string
+	for _, e := range in {
+		if e = strings.ToLower(stripMailto(e)); e != "" {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // fileSum fingerprints the config file's contents ("" when it's missing).
@@ -264,6 +285,8 @@ func printConfig(w io.Writer, c config) error {
 		IncludeAttendees:   c.includeAttendees,
 		IncludeAgenda:      c.includeAgenda,
 		RequireAuth:        c.requireAuth,
+		SelfEmails:         c.selfEmails,
+		SkipDeclined:       c.skipDeclined,
 		Feeds:              c.feeds,
 		// With tagging off there are no stores to read; print what would apply.
 		CorrectionsFile:   envStr("CORRECTIONS_FILE", "/data/corrections.json"),
